@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from sklearn.inspection import permutation_importance
 from loader import model, df  # df = full dataset
-from data.base import st_style, head, footer
-
+from data.base import st_style, head
 def app(input_data=None):
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
