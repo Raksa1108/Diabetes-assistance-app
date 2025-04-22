@@ -9,10 +9,12 @@ from sklearn.inspection import permutation_importance
 from loader import model, df  # df = full dataset
 from data.base import st_style, head
 
+# Fix deprecated numpy types for compatibility with SHAP
 import numpy as np
-# Fix for deprecated np.bool in newer NumPy versions
 if not hasattr(np, 'bool'):
     np.bool = bool
+if not hasattr(np, 'int'):
+    np.int = int
 
 def app(input_data=None):
     st.markdown(st_style, unsafe_allow_html=True)
@@ -24,7 +26,7 @@ def app(input_data=None):
         st.warning("No input found. Please make a prediction in the PREDICTION tab first.")
         return
 
-    # Format input
+    # Prepare input data
     if isinstance(input_data, dict):
         input_df = pd.DataFrame([input_data])
     elif isinstance(input_data, pd.Series):
@@ -42,6 +44,7 @@ def app(input_data=None):
     try:
         X_train = df.drop("Outcome", axis=1)
 
+        # Create SHAP explainer
         explainer = shap.Explainer(model.predict_proba, X_train)
         shap_values = explainer(input_df)
 
@@ -52,7 +55,7 @@ def app(input_data=None):
     except Exception as e:
         st.error(f"Error generating SHAP Waterfall plot: {e}")
 
-    # SHAP Explanation
+    # Explanation Text
     st.divider()
     st.markdown("### ℹ️ Explanation")
     st.markdown("""
@@ -61,7 +64,7 @@ def app(input_data=None):
     - 📊 **Final Prediction** = Base Value + SHAP Value contributions
     """)
 
-    # Permutation Feature Importance
+    # Permutation Feature Importance Chart
     st.divider()
     st.markdown("### 📊 Permutation Feature Importance")
     try:
