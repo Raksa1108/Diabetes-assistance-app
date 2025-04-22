@@ -20,31 +20,6 @@ st_style = """
 </style>
 """
 
-footer = """
-<style>
-.footer {
-    position: fixed;
-    left: 0;
-    bottom: 0;
-    width: 100%;
-    background-color: rgba(255, 182, 193, 0.2);  /* Light pink background */
-    text-align: center;
-    padding: 10px;
-    font-size: 14px;
-    color: black;
-}
-.footer a {
-    color: #ff69b4;  /* Hot pink links */
-    text-decoration: none;
-}
-.footer a:hover {
-    text-decoration: underline;
-}
-</style>
-<div class="footer">
-    <p>Diabetes Prediction | Data Source: National Institute of Diabetes and Digestive and Kidney Diseases | © 2024 UZNetDev <a href="https://github.com/UznetDev/Diabetes-Prediction.git" target="_blank">GitHub</a></p>
-</div>
-"""
 
 head = """
 <div style="text-align: center; font-size: 40px; font-weight: bold; color: #C2185B; margin-bottom: 20px;">
