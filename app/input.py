@@ -10,7 +10,8 @@ from data.base import st_style, head, footer
 
 # Constants
 HISTORY_FILE = "data/prediction_history.csv"
-MODEL_PATH = "notebooks/diabetes_model.pkl"
+MODEL_PATH = os.path.join("datasets", "diabetes_model.pkl")
+
 
 # Load model
 model = joblib.load(MODEL_PATH)
