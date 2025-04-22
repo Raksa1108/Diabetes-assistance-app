@@ -1,0 +1,57 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env/
+.venv/
+venv/
+ENV/
+env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment files
+*.env
+
+# VS Code settings
+.vscode/
+
+# Data and model artifacts
+*.pkl
+*.joblib
+model/diabetes_model.pkl
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit cache
+.streamlit/
+*.log
+
+# Compiled files
+*.so
+
+# Pytest cache
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+
+# History logs (if stored locally)
+logs/
+history.csv
+
+# Dataset backup
+data/*.csv
+!data/diabetes.csv  # include only the main dataset
+
+# Ignore any output or generated figures
+*.png
+*.jpg
+*.jpeg
+figures/
+outputs/
