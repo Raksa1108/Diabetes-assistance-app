@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 import os
-from data.base import st_style, head, footer
+from data.base import st_style, head
 
 # Constants
 HISTORY_FILE = "data/prediction_history.csv"
