@@ -1,7 +1,8 @@
 # app/about.py
 
 import streamlit as st
-from data.base import st_style, head, footer
+from data.base import st_style, head
+
 
 def app():
     st.markdown(st_style, unsafe_allow_html=True)
