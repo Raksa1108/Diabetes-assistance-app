@@ -43,4 +43,3 @@ def app():
     except Exception as e:
         st.error(f"An error occurred while computing performance metrics: {e}")
 
-    st.markdown(footer, unsafe_allow_html=True)

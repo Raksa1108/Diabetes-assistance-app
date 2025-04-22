@@ -26,5 +26,3 @@ def app():
                     st.error(f"❌ Something went wrong: {e}")
         else:
             st.warning("Please enter a question first.")
-
-    st.markdown(footer, unsafe_allow_html=True)

@@ -85,4 +85,3 @@ def app(input_data=None):
     except Exception as e:
         st.error(f"Could not generate permutation importance chart: {e}")
 
-    st.markdown(footer, unsafe_allow_html=True)

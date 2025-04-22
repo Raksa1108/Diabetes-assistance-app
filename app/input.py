@@ -79,4 +79,3 @@ def app():
         st.markdown("---")
         st.markdown("💖 Thank you for using our diabetes prediction app!")
 
-    st.markdown(footer, unsafe_allow_html=True)

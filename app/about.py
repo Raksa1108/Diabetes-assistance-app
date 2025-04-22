@@ -45,4 +45,4 @@ def app():
     Stay informed. Stay healthy.
     """)
 
-    st.markdown(footer, unsafe_allow_html=True)
+

@@ -39,4 +39,3 @@ def app():
     else:
         st.info("No prediction history found yet. Make a prediction to start building history.")
 
-    st.markdown(footer, unsafe_allow_html=True)
