@@ -11,7 +11,7 @@ def app():
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
 
-    st.title("💬 Ask AI About Diabetes (Gemini)")
+    st.title("A Personal AI Diabetes-Assistance-Bot")
     st.markdown("Ask anything related to **diabetes** and get an AI-powered answer.")
 
     prompt = st.text_input("🧠 What would you like to know?", placeholder="E.g. What is type 2 diabetes?")
