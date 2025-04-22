@@ -8,6 +8,12 @@ import plotly.express as px
 from sklearn.inspection import permutation_importance
 from loader import model, df  # df = full dataset
 from data.base import st_style, head
+
+import numpy as np
+# Fix for deprecated np.bool in newer NumPy versions
+if not hasattr(np, 'bool'):
+    np.bool = bool
+
 def app(input_data=None):
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
@@ -16,7 +22,6 @@ def app(input_data=None):
 
     if input_data is None:
         st.warning("No input found. Please make a prediction in the PREDICTION tab first.")
-        st.markdown(footer, unsafe_allow_html=True)
         return
 
     # Format input
@@ -37,7 +42,6 @@ def app(input_data=None):
     try:
         X_train = df.drop("Outcome", axis=1)
 
-        # Create SHAP explainer using model.predict_proba
         explainer = shap.Explainer(model.predict_proba, X_train)
         shap_values = explainer(input_df)
 
@@ -84,4 +88,3 @@ def app(input_data=None):
 
     except Exception as e:
         st.error(f"Could not generate permutation importance chart: {e}")
-
