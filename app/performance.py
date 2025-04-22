@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 from loader import model, df
-from data.base import st_style, head, footer
+from data.base import st_style, head
 
 def app():
     st.markdown(st_style, unsafe_allow_html=True)
