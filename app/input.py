@@ -6,7 +6,7 @@ import joblib
 import os
 from datetime import datetime
 from functions.function import make_donut
-from data.base import st_style, head, footer
+from data.base import st_style, head
 
 # Constants
 HISTORY_FILE = "data/prediction_history.csv"
