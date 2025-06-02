@@ -6,8 +6,7 @@ from datetime import datetime, date, timedelta
 import numpy as np
 from fpdf import FPDF
 from io import BytesIO
-
-# --------- Load datasets ------------
+from data.base import st_style, head
 @st.cache_data
 def load_datasets():
     try:
