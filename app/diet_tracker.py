@@ -14,7 +14,7 @@ def load_datasets():
         pred_food = pd.read_csv("dataset/pred_food.csv", encoding="ISO-8859-1")
         daily_nutrition = pd.read_csv("dataset/daily_food_nutrition_dataset.csv", encoding="ISO-8859-1")
         indian_food = pd.read_csv("dataset/indian_food.csv", encoding="ISO-8859-1")
-        indian_food1 = pd.read_csv("dataset/indian_food_DF.csv", encoding="ISO-8859-1")
+        indian_food1 = pd.read_csv("dataset/Indian_Food_DF.csv", encoding="ISO-8859-1")
         full_nutrition = pd.read_csv("dataset/Nutrition_Dataset.csv", encoding="ISO-8859-1")
         indian_processed = pd.read_csv("dataset/Indian_Food_Nutrition_Processed.csv", encoding="ISO-8859-1")
     except Exception as e:
