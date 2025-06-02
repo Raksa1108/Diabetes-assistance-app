@@ -1,6 +1,7 @@
 import streamlit as st
 import random
-import string
+import json
+import os
 from app import (
     about,
     input,
@@ -13,9 +14,29 @@ from app import (
     calculation
 )
 
-# Dummy in-memory user "database"
+USER_DATA_FILE = "users.json"
+
+# Load users safely from JSON file, handle empty or invalid JSON
+def load_users():
+    if os.path.exists(USER_DATA_FILE):
+        try:
+            with open(USER_DATA_FILE, "r") as f:
+                data = f.read().strip()
+                if not data:
+                    return {}
+                return json.loads(data)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+# Save users to JSON file
+def save_users(users):
+    with open(USER_DATA_FILE, "w") as f:
+        json.dump(users, f, indent=4)
+
+# Initialize session state variables
 if 'users' not in st.session_state:
-    st.session_state['users'] = {}  # key: email, value: dict with name, password, security_questions
+    st.session_state['users'] = load_users()
 
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -24,12 +45,11 @@ if 'current_user' not in st.session_state:
     st.session_state['current_user'] = None
 
 if 'forgot_password_stage' not in st.session_state:
-    st.session_state['forgot_password_stage'] = 0  # 0: enter email, 1: answer questions, 2: reset password
+    st.session_state['forgot_password_stage'] = 0
 
 if 'reset_email' not in st.session_state:
     st.session_state['reset_email'] = None
 
-# List of 10 security questions
 SECURITY_QUESTIONS = [
     "What was your childhood nickname?",
     "In what city did you meet your spouse?",
@@ -49,7 +69,7 @@ def signup():
     email = st.text_input("Email", key="signup_email")
     password = st.text_input("Password", type="password", key="signup_password")
 
-    st.markdown("### Choose any 5 security questions and provide your answers:")
+    st.markdown("### Choose exactly 5 security questions and provide your answers:")
     selected_questions = st.multiselect(
         "Select 5 questions",
         options=SECURITY_QUESTIONS,
@@ -59,11 +79,11 @@ def signup():
 
     answers = []
     if len(selected_questions) == 5:
-        for i, question in enumerate(selected_questions):
-            answer = st.text_input(f"Answer for: {question}", key=f"answer_{i}")
-            answers.append(answer)
+        for i, q in enumerate(selected_questions):
+            ans = st.text_input(f"Answer for: {q}", key=f"answer_{i}")
+            answers.append(ans)
     else:
-        st.info("Please select exactly 5 questions.")
+        st.info("Please select exactly 5 security questions.")
 
     if st.button("Sign Up", key="signup_button"):
         if not name or not email or not password:
@@ -72,18 +92,20 @@ def signup():
         if len(selected_questions) != 5:
             st.error("You must select exactly 5 security questions.")
             return
-        if any(a.strip() == "" for a in answers):
+        if any(not a.strip() for a in answers):
             st.error("Please answer all selected security questions.")
             return
         if email in st.session_state['users']:
             st.error("Email already registered. Please login.")
             return
-        # Save user info including security questions and answers
+        
+        # Save new user
         st.session_state['users'][email] = {
             "name": name,
             "password": password,
             "security_questions": dict(zip(selected_questions, answers))
         }
+        save_users(st.session_state['users'])
         st.success("Sign up successful! Please login.")
 
 def login():
@@ -104,6 +126,7 @@ def login():
         if st.session_state['users'][email]['password'] != password:
             st.error("Incorrect password.")
             return
+        
         st.session_state['logged_in'] = True
         st.session_state['current_user'] = st.session_state['users'][email]
         st.success(f"Welcome {st.session_state['current_user']['name']}!")
@@ -111,13 +134,16 @@ def login():
 
 def forgot_password_flow():
     st.title("🔐 Forgot Password")
+
     if st.button("Back to Login"):
         st.session_state['forgot_password_stage'] = 0
         st.session_state['reset_email'] = None
+        st.session_state.pop('fp_questions', None)
         st.experimental_rerun()
 
-    # Stage 0: enter email
-    if st.session_state['forgot_password_stage'] == 0:
+    stage = st.session_state['forgot_password_stage']
+
+    if stage == 0:
         email = st.text_input("Enter your registered email to proceed")
         if st.button("Next"):
             if email not in st.session_state['users']:
@@ -127,35 +153,33 @@ def forgot_password_flow():
                 st.session_state['forgot_password_stage'] = 1
                 st.experimental_rerun()
 
-    # Stage 1: ask 3 security questions
-    elif st.session_state['forgot_password_stage'] == 1:
+    elif stage == 1:
         user = st.session_state['users'][st.session_state['reset_email']]
         sq = user["security_questions"]
         questions = list(sq.keys())
-        # pick 3 random questions
+
         if 'fp_questions' not in st.session_state:
             st.session_state['fp_questions'] = random.sample(questions, 3)
 
         st.markdown("Answer the following 3 security questions:")
-        correct_count = 0
         answers = []
         for i, question in enumerate(st.session_state['fp_questions']):
             ans = st.text_input(question, key=f"fp_answer_{i}")
             answers.append(ans)
 
         if st.button("Verify Answers"):
+            correct = 0
             for i, question in enumerate(st.session_state['fp_questions']):
                 if answers[i].strip().lower() == sq[question].strip().lower():
-                    correct_count += 1
-            if correct_count >= 3:
+                    correct += 1
+            if correct >= 3:
                 st.success("Security questions verified! You can reset your password.")
                 st.session_state['forgot_password_stage'] = 2
                 st.experimental_rerun()
             else:
                 st.error("Incorrect answers. Please try again or go back to login.")
 
-    # Stage 2: reset password
-    elif st.session_state['forgot_password_stage'] == 2:
+    elif stage == 2:
         new_password = st.text_input("New Password", type="password", key="new_password")
         confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_password")
 
@@ -168,17 +192,17 @@ def forgot_password_flow():
                 return
             email = st.session_state['reset_email']
             st.session_state['users'][email]['password'] = new_password
+            save_users(st.session_state['users'])
             st.success("Password changed successfully! Please login.")
-            # Reset forgot password flow
             st.session_state['forgot_password_stage'] = 0
             st.session_state['reset_email'] = None
-            st.session_state['fp_questions'] = None
+            st.session_state.pop('fp_questions', None)
             st.experimental_rerun()
 
         if st.button("Skip Password Change (Login Now)"):
             st.session_state['forgot_password_stage'] = 0
             st.session_state['reset_email'] = None
-            st.session_state['fp_questions'] = None
+            st.session_state.pop('fp_questions', None)
             st.success("You can now login using your existing password.")
             st.experimental_rerun()
 
@@ -193,6 +217,7 @@ def show_app_nav():
     st.sidebar.write(f"👋 Hello, **{user['name']}**!")
     st.sidebar.markdown("---")
     st.sidebar.title("🔍 Navigation")
+
     app_mode = st.sidebar.radio("Go to", [
         "HOME",
         "PREDICTION",
@@ -210,41 +235,36 @@ def show_app_nav():
 
     if app_mode == "HOME":
         about.app()
-
     elif app_mode == "PREDICTION":
         input.app()
-
     elif app_mode == "INPUTS":
         calculation.app()
-
     elif app_mode == "SHAP WATERFALL":
         if 'last_input' in st.session_state:
             shap_waterfall.app(st.session_state['last_input'])
         else:
             shap_waterfall.app(None)
-
     elif app_mode == "DIET TRACKER":
         diet_tracker.app()
-
     elif app_mode == "PERFORMANCE":
         performance.app()
-
     elif app_mode == "HISTORY":
         history.app()
-
     elif app_mode == "ABOUT DIABETES":
         about_diabetes.app()
-
     elif app_mode == "ASK AI":
         ai_chat.app()
 
-# Main program flow
+# Main app flow
+def main():
+    if not st.session_state['logged_in']:
+        tabs = st.tabs(["Login", "Sign Up"])
+        with tabs[0]:
+            login()
+        with tabs[1]:
+            signup()
+    else:
+        show_app_nav()
 
-if not st.session_state['logged_in']:
-    tabs = st.tabs(["Login", "Sign Up"])
-    with tabs[0]:
-        login()
-    with tabs[1]:
-        signup()
-else:
-    show_app_nav()
+if __name__ == "__main__":
+    main()
