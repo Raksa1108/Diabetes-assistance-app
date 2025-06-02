@@ -1,5 +1,3 @@
-# app/about.py
-
 import streamlit as st
 from data.base import st_style, head
 
