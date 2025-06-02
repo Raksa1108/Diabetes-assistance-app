@@ -1,5 +1,3 @@
-# main.py
-
 import streamlit as st
 from app import (
     about,
@@ -9,7 +7,8 @@ from app import (
     history,
     about_diabetes,
     ai_chat,
-    diet_tracker
+    diet_tracker,
+    calculation  # 👈 Import the calculation module
 )
 
 # App setup
@@ -24,12 +23,13 @@ st.sidebar.title("🔍 Navigation")
 app_mode = st.sidebar.radio("Go to", [
     "HOME",
     "PREDICTION",
+    "INPUTS",  # 👈 New nav item
     "SHAP WATERFALL",
     "DIET TRACKER",
     "PERFORMANCE",
     "HISTORY",
-    "ASK AI" ,
-    "ABOUT DIABETES" 
+    "ASK AI",
+    "ABOUT DIABETES"
 ])
 
 # Page routing
@@ -38,6 +38,9 @@ if app_mode == "HOME":
 
 elif app_mode == "PREDICTION":
     input.app()
+
+elif app_mode == "INPUTS":  # 👈 Route for the new nav item
+    calculation.app()
 
 elif app_mode == "SHAP WATERFALL":
     if 'last_input' in st.session_state:
