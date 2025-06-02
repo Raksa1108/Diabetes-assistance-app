@@ -2,55 +2,46 @@ import streamlit as st
 import pandas as pd
 import requests
 import matplotlib.pyplot as plt
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+import numpy as np
 from fpdf import FPDF
 from io import BytesIO
 import os
-import numpy as np
 
+# --------- Load datasets ------------
 @st.cache_data
 def load_datasets():
     try:
-        # Exact file paths
-        pred_food_path = "dataset/pred_food.csv"
-        daily_nutrition_path = "dataset/daily_food_nutrition_dataset.csv"
-        indian_food_path = "dataset/indian_food.csv"
-        indian_food1_path = "dataset/indian_food_DF.csv"
-        full_nutrition_path = "dataset/Nutrition_Dataset.csv"
-        indian_processed_path = "dataset/Indian_Food_Nutrition_Processed.csv"
+        # Construct absolute paths relative to this file's parent folder (root)
+        BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        DATASET_DIR = os.path.join(BASE_DIR, "dataset")
 
-        pred_food = pd.read_csv(pred_food_path, encoding="ISO-8859-1") if os.path.exists(pred_food_path) else pd.DataFrame()
-        daily_nutrition = pd.read_csv(daily_nutrition_path, encoding="ISO-8859-1") if os.path.exists(daily_nutrition_path) else pd.DataFrame()
-        indian_food = pd.read_csv(indian_food_path, encoding="ISO-8859-1") if os.path.exists(indian_food_path) else pd.DataFrame()
-        indian_food1 = pd.read_csv(indian_food1_path, encoding="ISO-8859-1") if os.path.exists(indian_food1_path) else pd.DataFrame()
-        full_nutrition = pd.read_csv(full_nutrition_path, encoding="ISO-8859-1") if os.path.exists(full_nutrition_path) else pd.DataFrame()
-        indian_processed = pd.read_csv(indian_processed_path, encoding="ISO-8859-1") if os.path.exists(indian_processed_path) else pd.DataFrame()
-
+        pred_food = pd.read_csv(os.path.join(DATASET_DIR, "pred_food.csv"), encoding="ISO-8859-1")
+        daily_nutrition = pd.read_csv(os.path.join(DATASET_DIR, "daily_food_nutrition_dataset.csv"), encoding="ISO-8859-1")
+        indian_food = pd.read_csv(os.path.join(DATASET_DIR, "indian_food.csv"), encoding="ISO-8859-1")
+        indian_food1 = pd.read_csv(os.path.join(DATASET_DIR, "indian_food_DF.csv"), encoding="ISO-8859-1")
+        full_nutrition = pd.read_csv(os.path.join(DATASET_DIR, "Nutrition_Dataset.csv"), encoding="ISO-8859-1")
+        indian_processed = pd.read_csv(os.path.join(DATASET_DIR, "Indian_Food_Nutrition_Processed.csv"), encoding="ISO-8859-1")
     except Exception as e:
         st.error(f"Dataset loading failed: {e}")
         return None, None, None, None, None, None
-
     return pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed
 
 def merge_datasets(*datasets):
     dfs = []
-    for df in datasets[:-1]: 
-        if df is not None and not df.empty:
+    for df in datasets[:-1]:  # first five datasets
+        if df is not None:
             df.columns = [col.lower().strip() for col in df.columns]
             if 'food' in df.columns and 'calories' in df.columns:
                 dfs.append(df[['food', 'calories']].copy())
 
     processed = datasets[-1]
-    if processed is not None and not processed.empty:
+    if processed is not None:
         processed.columns = [col.lower().strip() for col in processed.columns]
-        if 'dish name' in processed.columns and 'calories (kcal)' in processed.columns:
-            processed['food'] = processed['dish name'].str.lower()
-            processed['calories'] = processed['calories (kcal)']
-            processed['gi'] = processed.get('glycemic index', 'N/A')
-            dfs.append(processed[['food', 'calories', 'gi']])
-
-    if not dfs:
-        return pd.DataFrame(columns=['food', 'calories', 'gi'])
+        processed['food'] = processed['dish name'].str.lower()
+        processed['calories'] = processed['calories (kcal)']
+        processed['gi'] = processed.get('glycemic index', 'N/A')
+        dfs.append(processed[['food', 'calories', 'gi']])
 
     combined = pd.concat(dfs, ignore_index=True)
     combined = combined.drop_duplicates(subset='food')
@@ -116,15 +107,12 @@ def app():
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
     food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
 
-    if food_df.empty:
-        st.error("Food dataset is empty. Please check dataset files.")
-        return
-
     if 'daily_goal' not in st.session_state:
         st.session_state.daily_goal = 2000
     if 'meal_log' not in st.session_state:
         st.session_state.meal_log = []
 
+    # Title & sidebar
     st.title("🥗 Diet Tracker for Diabetes")
     st.sidebar.subheader("🔧 Settings")
     st.session_state.daily_goal = st.sidebar.number_input(
@@ -194,59 +182,68 @@ def app():
             st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
         else:
             cal, carbs, protein, fat = fetch_nutritional_info(typed_food)
-            if cal is not None:
-                calories = (cal / 100) * total_quantity if total_quantity else cal
+            if cal and carbs is not None:
+                total_calories = cal * (total_quantity / 100)
                 st.session_state.meal_log.append({
                     "timestamp": datetime.now(),
                     "meal_time": meal_time,
                     "food": typed_food,
                     "quantity": total_quantity,
-                    "calories": round(calories, 2),
+                    "calories": round(total_calories, 2),
+                    "carbs": round(carbs * (total_quantity / 100), 2),
+                    "protein": round(protein * (total_quantity / 100), 2),
+                    "fat": round(fat * (total_quantity / 100), 2),
                     "gi": "N/A",
                     "source": "API"
                 })
-                st.success(f"Added {typed_food} from API with approx. {calories:.2f} kcal.")
+                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
             else:
-                st.error("No data found for this food from API or datasets.")
+                st.warning("Food not found in database or API. Please enter nutrition manually.")
+                calories_input = st.number_input("Calories per 100g", min_value=0.0, key="manual_cal")
+                carbs_input = st.number_input("Carbohydrates per 100g", min_value=0.0, key="manual_carb")
+                protein_input = st.number_input("Protein per 100g", min_value=0.0, key="manual_protein")
+                fat_input = st.number_input("Fat per 100g", min_value=0.0, key="manual_fat")
+                if st.button("Add Manual Entry"):
+                    calories = calories_input * (total_quantity / 100)
+                    st.session_state.meal_log.append({
+                        "timestamp": datetime.now(),
+                        "meal_time": meal_time,
+                        "food": typed_food,
+                        "quantity": total_quantity,
+                        "calories": round(calories, 2),
+                        "carbs": carbs_input * (total_quantity / 100),
+                        "protein": protein_input * (total_quantity / 100),
+                        "fat": fat_input * (total_quantity / 100),
+                        "gi": "N/A",
+                        "source": "Manual"
+                    })
+                    st.success(f"Manually added {typed_food} with {calories:.2f} kcal.")
 
-    st.markdown("---")
-    st.subheader("📊 Today's Intake")
-
+    st.subheader("📝 Meal Log")
     if st.session_state.meal_log:
         log_df = pd.DataFrame(st.session_state.meal_log)
-        log_df['timestamp'] = pd.to_datetime(log_df['timestamp'])
-
-        # Apply GI filter
         if gi_filter != "All":
-            filtered_log_df = log_df[log_df['gi'].apply(classify_gi) == gi_filter]
-        else:
-            filtered_log_df = log_df
+            log_df = log_df[log_df['gi'].apply(classify_gi) == gi_filter]
 
-        st.dataframe(filtered_log_df[['timestamp', 'meal_time', 'food', 'quantity', 'calories', 'gi', 'source']])
+        st.dataframe(log_df[['timestamp', 'meal_time', 'food', 'quantity', 'calories', 'gi']].sort_values('timestamp', ascending=False))
 
-        total_calories = filtered_log_df['calories'].sum()
+        total_calories = log_df['calories'].sum()
+        st.write(f"**Total Calories Today:** {total_calories:.2f} kcal")
         remaining = st.session_state.daily_goal - total_calories
+        st.write(f"**Remaining Calories:** {remaining:.2f} kcal")
 
-        st.metric("Calories Consumed", f"{total_calories:.2f} kcal")
-        st.metric("Calories Remaining", f"{remaining:.2f} kcal")
+        # Simple pie chart for calorie distribution
+        calories_by_meal = log_df.groupby('meal_time')['calories'].sum()
+        fig1, ax1 = plt.subplots()
+        ax1.pie(calories_by_meal, labels=calories_by_meal.index, autopct='%1.1f%%', startangle=90)
+        ax1.axis('equal')
+        st.pyplot(fig1)
 
-        # Pie chart for meal time distribution
-        meal_counts = filtered_log_df['meal_time'].value_counts()
-        fig, ax = plt.subplots()
-        ax.pie(meal_counts, labels=meal_counts.index, autopct="%1.1f%%", startangle=140)
-        ax.set_title("Meals logged by meal time")
-        st.pyplot(fig)
-
-        if st.button("Generate PDF Report"):
-            pdf_buffer = generate_pdf_report(st.session_state.meal_log, st.session_state.daily_goal)
-            st.download_button(
-                label="Download PDF Report",
-                data=pdf_buffer,
-                file_name=f"Diet_Report_{date.today()}.pdf",
-                mime="application/pdf"
-            )
+        if st.button("Download Daily Report (PDF)"):
+            pdf_file = generate_pdf_report(st.session_state.meal_log, st.session_state.daily_goal)
+            st.download_button(label="Download PDF", data=pdf_file, file_name="diet_report.pdf", mime="application/pdf")
     else:
-        st.info("No meals logged yet. Add some food items above.")
+        st.info("No meals logged yet.")
 
 if __name__ == "__main__":
     app()
