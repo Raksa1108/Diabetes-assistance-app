@@ -107,6 +107,9 @@ def app():
         st.session_state.meal_log = []
 
     # Title & sidebar
+    st.markdown(st_style, unsafe_allow_html=True)
+    st.markdown(head, unsafe_allow_html=True)
+
     st.title("🥗 Diet Tracker for Diabetes")
     st.sidebar.subheader("🔧 Settings")
     st.session_state.daily_goal = st.sidebar.number_input(
