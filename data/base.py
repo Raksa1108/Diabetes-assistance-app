@@ -3,26 +3,45 @@
 st_style = """
 <style>
     body {
-        background-color: pink;
+        background-color: #ffe6f0;
         color: black;
+        font-family: 'Segoe UI', sans-serif;
     }
     .stApp {
-        background-color: pink;
+        background-color: #ffe6f0;
         color: black;
     }
     div.block-container {
         padding-top: 1rem;
         color: black;
     }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    #MainMenu, footer, header {
+        visibility: hidden;
+    }
+
+    h1, h2, h3 {
+        color: black;
+        border-bottom: 2px solid white;
+        padding-bottom: 5px;
+    }
+
+    .highlight-box {
+        background-color: #add8e6;
+        color: black;
+        margin-bottom: 50px;
+        padding: 15px;
+        max-width: 350px;
+        text-align: center;
+        border-radius: 10px;
+        border: 2px solid white;
+        font-weight: bold;
+        box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1);
+    }
 </style>
 """
 
-
 head = """
-<div style="text-align: center; font-size: 40px; font-weight: bold; color: #C2185B; margin-bottom: 20px;">
+<div style="text-align: center; font-size: 40px; font-weight: bold; color: #D81B60; margin-bottom: 20px; text-shadow: 1px 1px white;">
     🌟 Diabetes Prediction App 🌟
 </div>
 <div style="text-align: center; font-size: 18px; color: #5D6D7E; margin-bottom: 60px;">
@@ -31,21 +50,12 @@ head = """
 """
 
 mrk = """
-<div style="background-color: {}; 
-color: white; 
-margin-bottom: 50px;
-padding: 10px;
-max-width: 300px;
-text-align: center;
-border-radius: 5px; text-align: center;">
+<div class="highlight-box" style="background-color: {}; color: black;">
     {}
 </div>
 """
 
-# HOME tab content
 introduction = """
-
-
 This app uses an AI model to help predict whether an individual is likely to have diabetes based on medical attributes.
 
 ### 🚀 How to Use the App:
@@ -60,7 +70,6 @@ This app uses an AI model to help predict whether an individual is likely to hav
 > **Disclaimer:** This is a demo tool for educational purposes. It should not be used as a medical diagnostic tool.
 """
 
-# ABOUT DIABETES tab content
 about_diabets = """
 ## What is diabetes?
 
@@ -82,28 +91,30 @@ about_diabets = """
    - Usually resolves after childbirth, but it increases the risk of developing type 2 diabetes later in life.
 
 ### **Symptoms of Diabetes**:
-- Frequent urination
-- Excessive thirst
-- Extreme hunger
-- Fatigue
-- Blurred vision
-- Slow-healing wounds
+- Frequent urination  
+- Excessive thirst  
+- Extreme hunger  
+- Fatigue  
+- Blurred vision  
+- Slow-healing wounds  
 - Unexplained weight loss (especially in type 1 diabetes)
 
 ### **Complications of Untreated Diabetes**:
-- Heart disease
-- Kidney damage
-- Vision loss (diabetic retinopathy)
-- Nerve damage (diabetic neuropathy)
+- Heart disease  
+- Kidney damage  
+- Vision loss (diabetic retinopathy)  
+- Nerve damage (diabetic neuropathy)  
 - Increased risk of infections
 
 ### **Management**:
-- **Diet**: Eating a balanced diet, avoiding high-sugar foods.
-- **Exercise**: Regular physical activity to improve insulin sensitivity.
-- **Medications**: Insulin therapy or oral diabetes medications.
+- **Diet**: Eating a balanced diet, avoiding high-sugar foods.  
+- **Exercise**: Regular physical activity to improve insulin sensitivity.  
+- **Medications**: Insulin therapy or oral diabetes medications.  
 - **Monitoring**: Regularly checking blood glucose levels.
 """
 
 warn = """
-THANK YOU FOR USING OUR APP!!!!
+<div class="highlight-box" style="background-color: #ffb6c1;">
+    💖 THANK YOU FOR USING OUR APP 💖
+</div>
 """
