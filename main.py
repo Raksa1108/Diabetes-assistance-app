@@ -8,7 +8,8 @@ from app import (
     performance,
     history,
     about_diabetes,
-    ai_chat  # 👈 NEW: Import the AI chatbot tab
+    ai_chat,
+    diet_tracker
 )
 
 # App setup
@@ -24,10 +25,11 @@ app_mode = st.sidebar.radio("Go to", [
     "HOME",
     "PREDICTION",
     "SHAP WATERFALL",
+    "DIET TRACKER",
     "PERFORMANCE",
     "HISTORY",
-    "ABOUT DIABETES",
-    "ASK AI"  # 👈 NEW: AI Chat tab
+    "ASK AI" ,
+    "ABOUT DIABETES" 
 ])
 
 # Page routing
@@ -42,6 +44,9 @@ elif app_mode == "SHAP WATERFALL":
         shap_waterfall.app(st.session_state['last_input'])
     else:
         shap_waterfall.app(None)
+
+elif app_mode == "DIET TRACKER":
+    diet_tracker.app()
 
 elif app_mode == "PERFORMANCE":
     performance.app()
