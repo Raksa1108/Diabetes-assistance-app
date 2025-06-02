@@ -16,25 +16,18 @@ from app import (
 
 USER_DATA_FILE = "users.json"
 
+# Load users safely from JSON file, handle empty or invalid JSON
 def load_users():
     if os.path.exists(USER_DATA_FILE):
         try:
-            with open(USER_DATA_FILE, "r", encoding="utf-8") as f:
+            with open(USER_DATA_FILE, "r") as f:
                 data = f.read().strip()
                 if not data:
                     return {}
                 return json.loads(data)
-        except UnicodeDecodeError:
-            st.error("Error reading users data: file encoding issue.")
-            return {}
-        except json.JSONDecodeError:
-            st.error("Error reading users data: JSON is invalid.")
-            return {}
-        except Exception as e:
-            st.error(f"Unexpected error loading users: {e}")
+        except (json.JSONDecodeError, IOError):
             return {}
     return {}
-
 
 # Save users to JSON file
 def save_users(users):
@@ -80,8 +73,7 @@ def signup():
     selected_questions = st.multiselect(
         "Select 5 questions",
         options=SECURITY_QUESTIONS,
-        key="signup_questions",
-        max_selections=5
+        key="signup_questions"
     )
 
     answers = []
@@ -105,7 +97,7 @@ def signup():
         if email in st.session_state['users']:
             st.error("Email already registered. Please login.")
             return
-        
+
         # Save new user
         st.session_state['users'][email] = {
             "name": name,
@@ -133,7 +125,7 @@ def login():
         if st.session_state['users'][email]['password'] != password:
             st.error("Incorrect password.")
             return
-        
+
         st.session_state['logged_in'] = True
         st.session_state['current_user'] = st.session_state['users'][email]
         st.success(f"Welcome {st.session_state['current_user']['name']}!")
