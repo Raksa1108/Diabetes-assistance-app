@@ -2,16 +2,16 @@ import streamlit as st
 import pandas as pd
 import requests
 import matplotlib.pyplot as plt
-from datetime import datetime, date, timedelta
-import numpy as np
+from datetime import datetime, date
 from fpdf import FPDF
 from io import BytesIO
 import os
+import numpy as np
 
 @st.cache_data
 def load_datasets():
     try:
-        # Use exact filenames with proper case
+        # Exact file paths
         pred_food_path = "dataset/pred_food.csv"
         daily_nutrition_path = "dataset/daily_food_nutrition_dataset.csv"
         indian_food_path = "dataset/indian_food.csv"
@@ -19,7 +19,6 @@ def load_datasets():
         full_nutrition_path = "dataset/Nutrition_Dataset.csv"
         indian_processed_path = "dataset/Indian_Food_Nutrition_Processed.csv"
 
-        # Load datasets only if files exist, else empty DataFrames
         pred_food = pd.read_csv(pred_food_path, encoding="ISO-8859-1") if os.path.exists(pred_food_path) else pd.DataFrame()
         daily_nutrition = pd.read_csv(daily_nutrition_path, encoding="ISO-8859-1") if os.path.exists(daily_nutrition_path) else pd.DataFrame()
         indian_food = pd.read_csv(indian_food_path, encoding="ISO-8859-1") if os.path.exists(indian_food_path) else pd.DataFrame()
@@ -33,7 +32,6 @@ def load_datasets():
 
     return pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed
 
-
 def merge_datasets(*datasets):
     dfs = []
     for df in datasets[:-1]: 
@@ -45,7 +43,6 @@ def merge_datasets(*datasets):
     processed = datasets[-1]
     if processed is not None and not processed.empty:
         processed.columns = [col.lower().strip() for col in processed.columns]
-        # Use 'dish name' column safely
         if 'dish name' in processed.columns and 'calories (kcal)' in processed.columns:
             processed['food'] = processed['dish name'].str.lower()
             processed['calories'] = processed['calories (kcal)']
@@ -128,7 +125,6 @@ def app():
     if 'meal_log' not in st.session_state:
         st.session_state.meal_log = []
 
-    # Title & sidebar
     st.title("🥗 Diet Tracker for Diabetes")
     st.sidebar.subheader("🔧 Settings")
     st.session_state.daily_goal = st.sidebar.number_input(
@@ -215,19 +211,27 @@ def app():
 
     st.markdown("---")
     st.subheader("📊 Today's Intake")
+
     if st.session_state.meal_log:
         log_df = pd.DataFrame(st.session_state.meal_log)
         log_df['timestamp'] = pd.to_datetime(log_df['timestamp'])
-        st.dataframe(log_df[['timestamp', 'meal_time', 'food', 'quantity', 'calories', 'gi', 'source']])
 
-        total_calories = log_df['calories'].sum()
+        # Apply GI filter
+        if gi_filter != "All":
+            filtered_log_df = log_df[log_df['gi'].apply(classify_gi) == gi_filter]
+        else:
+            filtered_log_df = log_df
+
+        st.dataframe(filtered_log_df[['timestamp', 'meal_time', 'food', 'quantity', 'calories', 'gi', 'source']])
+
+        total_calories = filtered_log_df['calories'].sum()
         remaining = st.session_state.daily_goal - total_calories
 
         st.metric("Calories Consumed", f"{total_calories:.2f} kcal")
         st.metric("Calories Remaining", f"{remaining:.2f} kcal")
 
         # Pie chart for meal time distribution
-        meal_counts = log_df['meal_time'].value_counts()
+        meal_counts = filtered_log_df['meal_time'].value_counts()
         fig, ax = plt.subplots()
         ax.pie(meal_counts, labels=meal_counts.index, autopct="%1.1f%%", startangle=140)
         ax.set_title("Meals logged by meal time")
