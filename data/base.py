@@ -44,7 +44,7 @@ head = """
 <div style="text-align: center; font-size: 40px; font-weight: bold; color: #D81B60; margin-bottom: 20px; text-shadow: 1px 1px white;">
     🌟 Diabetes Prediction App 🌟
 </div>
-<div style="text-align: center; font-size: 18px; color: #5D6D7E; margin-bottom: 60px;">
+<div style="text-align: center; font-size: 18px; color:#D81B60; margin-bottom: 60px;">
     Harness the power of AI to predict diabetes and provide insights!
 </div>
 """
