@@ -34,7 +34,7 @@ def app():
         'Pregnancies': pregnancies,
         'Glucose': glucose,
         'BloodPressure': blood_pressure,
-        'SkinThickness(default value)': skin_thickness,
+        'SkinThickness': skin_thickness,
         'Insulin': insulin,
         'BMI': bmi,
         'DiabetesPedigreeFunction': dpf,
