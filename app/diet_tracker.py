@@ -15,7 +15,7 @@ def load_datasets():
         pred_food_path = "dataset/pred_food.csv"
         daily_nutrition_path = "dataset/daily_food_nutrition_dataset.csv"
         indian_food_path = "dataset/indian_food.csv"
-        indian_food1_path = "dataset/Indian_Food_DF.csv"
+        indian_food1_path = "dataset/indian_food_DF.csv"
         full_nutrition_path = "dataset/Nutrition_Dataset.csv"
         indian_processed_path = "dataset/Indian_Food_Nutrition_Processed.csv"
 
