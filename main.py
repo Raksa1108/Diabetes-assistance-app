@@ -16,18 +16,25 @@ from app import (
 
 USER_DATA_FILE = "users.json"
 
-# Load users safely from JSON file, handle empty or invalid JSON
 def load_users():
     if os.path.exists(USER_DATA_FILE):
         try:
-            with open(USER_DATA_FILE, "r") as f:
+            with open(USER_DATA_FILE, "r", encoding="utf-8") as f:
                 data = f.read().strip()
                 if not data:
                     return {}
                 return json.loads(data)
-        except (json.JSONDecodeError, IOError):
+        except UnicodeDecodeError:
+            st.error("Error reading users data: file encoding issue.")
+            return {}
+        except json.JSONDecodeError:
+            st.error("Error reading users data: JSON is invalid.")
+            return {}
+        except Exception as e:
+            st.error(f"Unexpected error loading users: {e}")
             return {}
     return {}
+
 
 # Save users to JSON file
 def save_users(users):
