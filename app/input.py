@@ -1,4 +1,3 @@
-# app/input.py
 
 import streamlit as st
 import pandas as pd
@@ -8,12 +7,10 @@ from datetime import datetime
 from functions.function import make_donut
 from data.base import st_style, head
 
-# Constants
 HISTORY_FILE = "data/prediction_history.csv"
 MODEL_PATH = os.path.join("datasets", "diabetes_model.pkl")
 
 
-# Load model
 model = joblib.load(MODEL_PATH)
 
 def app():
@@ -24,7 +21,6 @@ def app():
     st.title("🧪 AI-based Diabetes Risk Prediction")
     st.subheader("📋 Enter your health information:")
 
-    # Input form
     pregnancies = st.number_input("Pregnancies", min_value=0, max_value=20, value=0)
     glucose = st.number_input("Glucose", min_value=0, max_value=200, value=120)
     blood_pressure = st.number_input("Blood Pressure", min_value=0, max_value=150, value=70)
@@ -38,7 +34,7 @@ def app():
         'Pregnancies': pregnancies,
         'Glucose': glucose,
         'BloodPressure': blood_pressure,
-        'SkinThickness': skin_thickness,
+        'SkinThickness(default value)': skin_thickness,
         'Insulin': insulin,
         'BMI': bmi,
         'DiabetesPedigreeFunction': dpf,
@@ -56,13 +52,11 @@ def app():
         label = "Positive" if prediction == 1 else "Negative"
         message = "⚠️ You may have diabetes." if prediction == 1 else "✅ You are unlikely to have diabetes."
 
-        # Show results
         st.subheader("🔮 Prediction Result")
         st.success(message)
         st.metric("Predicted Risk (%)", f"{risk_percent:.2f}%")
         st.altair_chart(make_donut(risk_percent, label="Risk Level", input_color='red' if prediction == 1 else 'green'))
 
-        # Log result
         result_row = input_dict.copy()
         result_row["Risk (%)"] = round(risk_percent, 2)
         result_row["Prediction"] = label
