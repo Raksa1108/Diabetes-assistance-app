@@ -7,6 +7,7 @@ import numpy as np
 from fpdf import FPDF
 from io import BytesIO
 from data.base import st_style, head
+
 @st.cache_data
 def load_datasets():
     try:
@@ -34,8 +35,7 @@ def merge_datasets(*datasets):
         processed.columns = [col.lower().strip() for col in processed.columns]
         processed['food'] = processed['dish name'].str.lower()
         processed['calories'] = processed['calories (kcal)']
-        processed['gi'] = processed.get('glycemic index', 'N/A')
-        dfs.append(processed[['food', 'calories', 'gi']])
+        dfs.append(processed[['food', 'calories']])
 
     combined = pd.concat(dfs, ignore_index=True)
     combined = combined.drop_duplicates(subset='food')
@@ -59,18 +59,6 @@ def fetch_nutritional_info(food_name):
     except Exception:
         return None, None, None, None
     return None, None, None, None
-
-def classify_gi(gi):
-    try:
-        gi = float(gi)
-        if gi < 55:
-            return "Low"
-        elif gi < 70:
-            return "Medium"
-        else:
-            return "High"
-    except:
-        return "Unknown"
 
 def generate_pdf_report(meal_log, daily_goal):
     pdf = FPDF()
@@ -101,6 +89,7 @@ def app():
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
     food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
 
+    # Initialize session state
     if 'daily_goal' not in st.session_state:
         st.session_state.daily_goal = 2000
     if 'meal_log' not in st.session_state:
@@ -115,7 +104,6 @@ def app():
     st.session_state.daily_goal = st.sidebar.number_input(
         "Set Daily Calorie Goal", min_value=800, max_value=4000, value=st.session_state.daily_goal, step=50
     )
-    gi_filter = st.sidebar.selectbox("Filter by Glycemic Index", ["All", "Low", "Medium", "High"])
 
     st.subheader("🍱 Add Your Meal")
 
@@ -166,14 +154,12 @@ def app():
             best_match = food_df[food_df['food'] == selected_food].iloc[0]
             calories_per_100g = float(best_match["calories"])
             calories = (calories_per_100g / 100) * total_quantity
-            gi_val = best_match.get("gi", "N/A")
             st.session_state.meal_log.append({
                 "timestamp": datetime.now(),
                 "meal_time": meal_time,
                 "food": best_match["food"],
                 "quantity": total_quantity,
                 "calories": round(calories, 2),
-                "gi": gi_val,
                 "source": "dataset"
             })
             st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
@@ -190,7 +176,6 @@ def app():
                     "carbs": round(carbs * (total_quantity / 100), 2),
                     "protein": round(protein * (total_quantity / 100), 2),
                     "fat": round(fat * (total_quantity / 100), 2),
-                    "gi": "N/A",
                     "source": "API"
                 })
                 st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
@@ -210,7 +195,6 @@ def app():
                         "carbs": round(carbs_input * (total_quantity / 100), 2),
                         "protein": round(protein_input * (total_quantity / 100), 2),
                         "fat": round(fat_input * (total_quantity / 100), 2),
-                        "gi": "N/A",
                         "source": "manual"
                     })
                     st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
@@ -222,6 +206,23 @@ def app():
         st.session_state.meal_log = []
         st.success("All logged meals cleared.")
 
+    # --- Calendar View ---
+    st.markdown("### 📅 Calendar View")
+    selected_date = st.date_input("Select a date to view logged meals", value=date.today())
+    
+    if st.session_state.meal_log:
+        df = pd.DataFrame(st.session_state.meal_log)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df_selected_date = df[df['timestamp'].dt.date == selected_date]
+        
+        if df_selected_date.empty:
+            st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
+        else:
+            st.subheader(f"Meals for {selected_date.strftime('%Y-%m-%d')}")
+            st.dataframe(df_selected_date[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp", ascending=False))
+    else:
+        st.info("No meals logged yet.")
+
     # --- Daily Summary ---
     st.markdown("### 📊 Daily Summary")
     if st.session_state.meal_log:
@@ -229,13 +230,26 @@ def app():
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_today = df[df['timestamp'].dt.date == date.today()]
 
-        if gi_filter != "All":
-            df_today = df_today[df_today["gi"].apply(classify_gi) == gi_filter]
-
         if df_today.empty:
-            st.info("No meals logged for today with current GI filter.")
+            st.info("No meals logged for today.")
         else:
-            st.dataframe(df_today[["timestamp", "meal_time", "food", "quantity", "calories", "gi"]].sort_values("timestamp", ascending=False))
+            st.subheader("Today's Logged Meals")
+            # Display table with "Clear This" button for each entry
+            for i, row in df_today.sort_values("timestamp", ascending=False).iterrows():
+                cols = st.columns([2, 2, 2, 2, 1])
+                with cols[0]:
+                    st.write(row["timestamp"].strftime("%Y-%m-%d %H:%M:%S"))
+                with cols[1]:
+                    st.write(row["meal_time"])
+                with cols[2]:
+                    st.write(row["food"])
+                with cols[3]:
+                    st.write(f"{row['quantity']}g, {row['calories']} kcal")
+                with cols[4]:
+                    if st.button("Clear This", key=f"clear_{i}"):
+                        st.session_state.meal_log = [meal for j, meal in enumerate(st.session_state.meal_log) if j != i]
+                        st.success(f"Removed {row['food']} from log.")
+                        st.experimental_rerun()
 
             total_calories = df_today["calories"].sum()
             total_carbs = df_today["carbs"].sum() if "carbs" in df_today.columns else 0
@@ -278,7 +292,7 @@ def app():
             else:
                 st.info("No macronutrient data available to plot.")
 
-            # --- New Visualization: Calories per Meal Time Bar Chart ---
+            # --- Calories per Meal Time Bar Chart ---
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
             fig2, ax2 = plt.subplots()
@@ -288,7 +302,7 @@ def app():
             ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state.daily_goal * 0.3))
             st.pyplot(fig2)
 
-            # --- New Visualization: Weekly Calories Trend ---
+            # --- Weekly Calories Trend ---
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
             today = date.today()
             past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]  # 7 days ascending
