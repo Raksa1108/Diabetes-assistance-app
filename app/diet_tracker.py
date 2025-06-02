@@ -6,6 +6,8 @@ from datetime import datetime, date, timedelta
 import numpy as np
 from fpdf import FPDF
 from io import BytesIO
+import json
+import os
 from data.base import st_style, head
 
 @st.cache_data
@@ -84,6 +86,32 @@ def generate_pdf_report(meal_log, daily_goal):
     pdf_output.seek(0)
     return pdf_output
 
+def save_meal_log(meal_log):
+    """Save meal log to a JSON file for persistence."""
+    with open("meal_log.json", "w") as f:
+        # Convert datetime to string for JSON serialization
+        serializable_log = []
+        for meal in meal_log:
+            meal_copy = meal.copy()
+            meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
+            serializable_log.append(meal_copy)
+        json.dump(serializable_log, f)
+
+def load_meal_log():
+    """Load meal log from a JSON file."""
+    try:
+        if os.path.exists("meal_log.json"):
+            with open("meal_log.json", "r") as f:
+                data = json.load(f)
+                # Convert timestamp strings back to datetime
+                for meal in data:
+                    meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
+                return data
+        return []
+    except Exception as e:
+        st.error(f"Failed to load meal log: {e}")
+        return []
+
 def app():
     # Load and merge datasets
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
@@ -93,7 +121,7 @@ def app():
     if 'daily_goal' not in st.session_state:
         st.session_state.daily_goal = 2000
     if 'meal_log' not in st.session_state:
-        st.session_state.meal_log = []
+        st.session_state.meal_log = load_meal_log()
 
     # Title & sidebar
     st.markdown(st_style, unsafe_allow_html=True)
@@ -162,6 +190,7 @@ def app():
                 "calories": round(calories, 2),
                 "source": "dataset"
             })
+            save_meal_log(st.session_state.meal_log)
             st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
         else:
             cal, carbs, protein, fat = fetch_nutritional_info(typed_food)
@@ -178,6 +207,7 @@ def app():
                     "fat": round(fat * (total_quantity / 100), 2),
                     "source": "API"
                 })
+                save_meal_log(st.session_state.meal_log)
                 st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
@@ -197,6 +227,7 @@ def app():
                         "fat": round(fat_input * (total_quantity / 100), 2),
                         "source": "manual"
                     })
+                    save_meal_log(st.session_state.meal_log)
                     st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
                 else:
                     st.info("Enter calories to log manually.")
@@ -204,6 +235,7 @@ def app():
     # --- Clear Meals Button ---
     if st.button("Clear All Logged Meals"):
         st.session_state.meal_log = []
+        save_meal_log(st.session_state.meal_log)
         st.success("All logged meals cleared.")
 
     # --- Calendar View ---
@@ -248,6 +280,7 @@ def app():
                 with cols[4]:
                     if st.button("Clear This", key=f"clear_{i}"):
                         st.session_state.meal_log = [meal for j, meal in enumerate(st.session_state.meal_log) if j != i]
+                        save_meal_log(st.session_state.meal_log)
                         st.success(f"Removed {row['food']} from log.")
                         st.experimental_rerun()
 
