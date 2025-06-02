@@ -1,7 +1,5 @@
 import streamlit as st
 import random
-import json
-import os
 from app import (
     about,
     input,
@@ -13,31 +11,9 @@ from app import (
     diet_tracker,
     calculation
 )
-
-USER_DATA_FILE = "users.json"
-
-# Load users safely from JSON file, handle empty or invalid JSON
-def load_users():
-    if os.path.exists(USER_DATA_FILE):
-        try:
-            with open(USER_DATA_FILE, "r") as f:
-                data = f.read().strip()
-                if not data:
-                    return {}
-                return json.loads(data)
-        except (json.JSONDecodeError, IOError):
-            return {}
-    return {}
-
-# Save users to JSON file
-def save_users(users):
-    with open(USER_DATA_FILE, "w") as f:
-        json.dump(users, f, indent=4)
+from supabase_client import supabase
 
 # Initialize session state variables
-if 'users' not in st.session_state:
-    st.session_state['users'] = load_users()
-
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
@@ -63,6 +39,10 @@ SECURITY_QUESTIONS = [
     "What was your dream job as a child?"
 ]
 
+def get_user_by_email(email):
+    response = supabase.table("users").select("*").eq("email", email).execute()
+    return response.data[0] if response.data else None
+
 def signup():
     st.title("🔐 Sign Up")
     name = st.text_input("Name", key="signup_name")
@@ -73,7 +53,8 @@ def signup():
     selected_questions = st.multiselect(
         "Select 5 questions",
         options=SECURITY_QUESTIONS,
-        key="signup_questions"
+        key="signup_questions",
+        max_selections=5
     )
 
     answers = []
@@ -94,17 +75,16 @@ def signup():
         if any(not a.strip() for a in answers):
             st.error("Please answer all selected security questions.")
             return
-        if email in st.session_state['users']:
+        if get_user_by_email(email):
             st.error("Email already registered. Please login.")
             return
 
-        # Save new user
-        st.session_state['users'][email] = {
+        supabase.table("users").insert({
             "name": name,
+            "email": email,
             "password": password,
             "security_questions": dict(zip(selected_questions, answers))
-        }
-        save_users(st.session_state['users'])
+        }).execute()
         st.success("Sign up successful! Please login.")
 
 def login():
@@ -119,17 +99,18 @@ def login():
         return
 
     if st.button("Login", key="login_button"):
-        if email not in st.session_state['users']:
+        user = get_user_by_email(email)
+        if not user:
             st.error("Email not registered. Please sign up.")
             return
-        if st.session_state['users'][email]['password'] != password:
+        if user['password'] != password:
             st.error("Incorrect password.")
             return
 
         st.session_state['logged_in'] = True
-        st.session_state['current_user'] = st.session_state['users'][email]
-        st.success(f"Welcome {st.session_state['current_user']['name']}!")
-        st.experimental_rerun()
+        st.session_state['current_user'] = user
+        st.success(f"Welcome {user['name']}!")
+        st.rerun()  # changed from st.experimental_rerun()
 
 def forgot_password_flow():
     st.title("🔐 Forgot Password")
@@ -138,22 +119,23 @@ def forgot_password_flow():
         st.session_state['forgot_password_stage'] = 0
         st.session_state['reset_email'] = None
         st.session_state.pop('fp_questions', None)
-        st.experimental_rerun()
+        st.rerun()  # changed from st.experimental_rerun()
 
     stage = st.session_state['forgot_password_stage']
 
     if stage == 0:
         email = st.text_input("Enter your registered email to proceed")
         if st.button("Next"):
-            if email not in st.session_state['users']:
+            user = get_user_by_email(email)
+            if not user:
                 st.error("This email is not registered.")
             else:
                 st.session_state['reset_email'] = email
                 st.session_state['forgot_password_stage'] = 1
-                st.experimental_rerun()
+                st.rerun()  # changed from st.experimental_rerun()
 
     elif stage == 1:
-        user = st.session_state['users'][st.session_state['reset_email']]
+        user = get_user_by_email(st.session_state['reset_email'])
         sq = user["security_questions"]
         questions = list(sq.keys())
 
@@ -174,7 +156,7 @@ def forgot_password_flow():
             if correct >= 3:
                 st.success("Security questions verified! You can reset your password.")
                 st.session_state['forgot_password_stage'] = 2
-                st.experimental_rerun()
+                st.rerun()  # changed from st.experimental_rerun()
             else:
                 st.error("Incorrect answers. Please try again or go back to login.")
 
@@ -190,26 +172,28 @@ def forgot_password_flow():
                 st.error("Passwords do not match.")
                 return
             email = st.session_state['reset_email']
-            st.session_state['users'][email]['password'] = new_password
-            save_users(st.session_state['users'])
+            supabase.table("users").update({"password": new_password}).eq("email", email).execute()
             st.success("Password changed successfully! Please login.")
             st.session_state['forgot_password_stage'] = 0
             st.session_state['reset_email'] = None
             st.session_state.pop('fp_questions', None)
-            st.experimental_rerun()
+            st.rerun()  # changed from st.experimental_rerun()
 
         if st.button("Skip Password Change (Login Now)"):
+            user = get_user_by_email(st.session_state['reset_email'])
+            st.session_state['logged_in'] = True
+            st.session_state['current_user'] = user
             st.session_state['forgot_password_stage'] = 0
             st.session_state['reset_email'] = None
             st.session_state.pop('fp_questions', None)
-            st.success("You can now login using your existing password.")
-            st.experimental_rerun()
+            st.success(f"Welcome back, {user['name']}!")
+            st.rerun()  # changed from st.experimental_rerun()
 
 def logout():
     st.session_state['logged_in'] = False
     st.session_state['current_user'] = None
     st.success("You have been logged out.")
-    st.experimental_rerun()
+    st.rerun()  # changed from st.experimental_rerun()
 
 def show_app_nav():
     user = st.session_state['current_user']
@@ -254,7 +238,6 @@ def show_app_nav():
     elif app_mode == "ASK AI":
         ai_chat.app()
 
-# Main app flow
 def main():
     if not st.session_state['logged_in']:
         tabs = st.tabs(["Login", "Sign Up"])
