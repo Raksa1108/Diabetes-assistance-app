@@ -9,6 +9,7 @@ __pycache__/
 venv/
 ENV/
 env/
+*.env
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
@@ -55,3 +56,7 @@ data/*.csv
 *.jpeg
 figures/
 outputs/
+
+# Diet Tracker-specific ignores (added)
+meal_log.json
+dataset/
