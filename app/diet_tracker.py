@@ -113,17 +113,17 @@ def load_meal_log():
         return []
 
 def app():
-    # Load and merge datasets
+    
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
     food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
 
-    # Initialize session state
+   
     if 'daily_goal' not in st.session_state:
         st.session_state.daily_goal = 2000
     if 'meal_log' not in st.session_state:
         st.session_state.meal_log = load_meal_log()
 
-    # Title & sidebar
+  
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
 
@@ -232,13 +232,13 @@ def app():
                 else:
                     st.info("Enter calories to log manually.")
 
-    # --- Clear Meals Button ---
+    -
     if st.button("Clear All Logged Meals"):
         st.session_state.meal_log = []
         save_meal_log(st.session_state.meal_log)
         st.success("All logged meals cleared.")
 
-    # --- Calendar View ---
+    
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
     
@@ -255,7 +255,7 @@ def app():
     else:
         st.info("No meals logged yet.")
 
-    # --- Daily Summary ---
+   
     st.markdown("### 📊 Daily Summary")
     if st.session_state.meal_log:
         df = pd.DataFrame(st.session_state.meal_log)
@@ -325,7 +325,7 @@ def app():
             else:
                 st.info("No macronutrient data available to plot.")
 
-            # --- Calories per Meal Time Bar Chart ---
+            
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
             fig2, ax2 = plt.subplots()
@@ -335,7 +335,7 @@ def app():
             ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state.daily_goal * 0.3))
             st.pyplot(fig2)
 
-            # --- Weekly Calories Trend ---
+            
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
             today = date.today()
             past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]  # 7 days ascending
