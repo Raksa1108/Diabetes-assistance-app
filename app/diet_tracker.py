@@ -232,7 +232,6 @@ def app():
                 else:
                     st.info("Enter calories to log manually.")
 
-    -
     if st.button("Clear All Logged Meals"):
         st.session_state.meal_log = []
         save_meal_log(st.session_state.meal_log)
