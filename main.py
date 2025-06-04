@@ -7,7 +7,7 @@ from app import performance
 from app import history
 from app import about_diabetes
 from app import ai_chat
-from app import  diet_tracker
+from app import diet_tracker
 from app import calculation
 from supabase_client import supabase
 if 'logged_in' not in st.session_state:
