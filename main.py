@@ -2,7 +2,7 @@ import streamlit as st
 import random
 from app import (
     about,
-    input,
+    user_input,
     shap_waterfall,
     performance,
     history,
@@ -204,7 +204,7 @@ def show_app_nav():
     app_mode = st.sidebar.radio("Go to", [
         "HOME",
         "PREDICTION",
-        "INPUTS",
+        "INPUTS AND CALCULATIONS",
         "SHAP WATERFALL",
         "DIET TRACKER",
         "PERFORMANCE",
@@ -219,7 +219,7 @@ def show_app_nav():
     if app_mode == "HOME":
         about.app()
     elif app_mode == "PREDICTION":
-        input.app()
+        user_input.app()
     elif app_mode == "INPUTS":
         calculation.app()
     elif app_mode == "SHAP WATERFALL":
