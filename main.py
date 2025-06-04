@@ -200,7 +200,7 @@ def show_app_nav():
     app_mode = st.sidebar.radio("Go to", [
         "HOME",
         "PREDICTION",
-        "INPUTS AND CALCULATIONS",
+        "INPUTS CALCULATION",
         "SHAP WATERFALL",
         "DIET TRACKER",
         "PERFORMANCE",
@@ -216,7 +216,7 @@ def show_app_nav():
         about.app()
     elif app_mode == "PREDICTION":
         user_input.app()
-    elif app_mode == "INPUTS":
+    elif app_mode == "INPUTS CALCULATION":
         calculation.app()
     elif app_mode == "SHAP WATERFALL":
         if 'last_input' in st.session_state:
