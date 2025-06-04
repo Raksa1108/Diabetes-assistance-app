@@ -1,19 +1,15 @@
 import streamlit as st
 import random
-from app import (
-    about,
-    user_input,
-    shap_waterfall,
-    performance,
-    history,
-    about_diabetes,
-    ai_chat,
-    diet_tracker,
-    calculation
-)
+from app import about
+from app import user_input
+from app import shap_waterfall
+from app import performance
+from app import history
+from app import about_diabetes
+from app import ai_chat
+from app import  diet_tracker
+from app import calculation
 from supabase_client import supabase
-
-# Initialize session state variables
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
