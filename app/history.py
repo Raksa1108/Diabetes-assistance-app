@@ -64,7 +64,11 @@ def profile_section():
     st.markdown("### 👤 User Profile")
     st.markdown("View and edit your profile information.")
 
-    user = st.session_state['current_user']
+    user = st.session_state.get('current_user')
+    if not user:
+        st.error("User not logged in.")
+        return
+
     email = user.get('email')
     if not email:
         st.error("User email not found. Please log in again.")
@@ -75,18 +79,28 @@ def profile_section():
         st.error("User data not found in database. Please contact support.")
         return
 
+    # Initialize profile fields with safe defaults, convert None to empty or 0
     if 'profile_edit_mode' not in st.session_state:
         st.session_state['profile_edit_mode'] = False
     if 'profile_name' not in st.session_state:
-        st.session_state['profile_name'] = user_data.get('name', '')
+        st.session_state['profile_name'] = user_data.get('name') or ''
     if 'profile_age' not in st.session_state:
-        st.session_state['profile_age'] = user_data.get('age', 0) or 0
+        try:
+            st.session_state['profile_age'] = int(user_data.get('age') or 0)
+        except Exception:
+            st.session_state['profile_age'] = 0
     if 'profile_height' not in st.session_state:
-        st.session_state['profile_height'] = user_data.get('height', 0.0) or 0.0
+        try:
+            st.session_state['profile_height'] = float(user_data.get('height') or 0.0)
+        except Exception:
+            st.session_state['profile_height'] = 0.0
     if 'profile_weight' not in st.session_state:
-        st.session_state['profile_weight'] = user_data.get('weight', 0.0) or 0.0
+        try:
+            st.session_state['profile_weight'] = float(user_data.get('weight') or 0.0)
+        except Exception:
+            st.session_state['profile_weight'] = 0.0
     if 'profile_username' not in st.session_state:
-        st.session_state['profile_username'] = user_data.get('username', user_data.get('email', ''))
+        st.session_state['profile_username'] = user_data.get('username') or email
 
     if not st.session_state['profile_edit_mode']:
         st.subheader("Profile Information")
@@ -100,9 +114,9 @@ def profile_section():
     else:
         st.subheader("Edit Profile")
         st.session_state['profile_name'] = st.text_input("Name", value=st.session_state['profile_name'], key="edit_name")
-        st.session_state['profile_age'] = st.number_input("Age", min_value=0, max_value=150, value=int(st.session_state['profile_age']), key="edit_age")
-        st.session_state['profile_height'] = st.number_input("Height (cm)", min_value=0.0, max_value=300.0, value=float(st.session_state['profile_height']), key="edit_height")
-        st.session_state['profile_weight'] = st.number_input("Weight (kg)", min_value=0.0, max_value=500.0, value=float(st.session_state['profile_weight']), key="edit_weight")
+        st.session_state['profile_age'] = st.number_input("Age", min_value=0, max_value=150, value=st.session_state['profile_age'], key="edit_age")
+        st.session_state['profile_height'] = st.number_input("Height (cm)", min_value=0.0, max_value=300.0, value=st.session_state['profile_height'], key="edit_height")
+        st.session_state['profile_weight'] = st.number_input("Weight (kg)", min_value=0.0, max_value=500.0, value=st.session_state['profile_weight'], key="edit_weight")
         st.session_state['profile_username'] = st.text_input("Username", value=st.session_state['profile_username'], key="edit_username")
 
         col1, col2 = st.columns(2)
@@ -116,22 +130,28 @@ def profile_section():
                         "weight": st.session_state['profile_weight'],
                         "username": st.session_state['profile_username']
                     }
-                    supabase.table("users").update(update_data).eq("email", email).execute()
-                    st.session_state['current_user'] = get_user_by_email(email)
-                    st.session_state['profile_edit_mode'] = False
-                    st.success("Profile updated successfully!")
-                    st.rerun()
+                    response = supabase.table("users").update(update_data).eq("email", email).execute()
+                    if response.error:
+                        st.error(f"Failed to update profile: {response.error.message}")
+                    else:
+                        # Refresh user data after update
+                        st.session_state['current_user'] = get_user_by_email(email)
+                        st.session_state['profile_edit_mode'] = False
+                        st.success("Profile updated successfully!")
+                        st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Failed to update profile: {str(e)}")
         with col2:
             if st.button("Cancel", key="cancel_profile"):
+                # Reset fields to original user_data values on cancel
                 st.session_state['profile_edit_mode'] = False
-                st.session_state['profile_name'] = user_data.get('name', '')
-                st.session_state['profile_age'] = user_data.get('age', 0) or 0
-                st.session_state['profile_height'] = user_data.get('height', 0.0) or 0.0
-                st.session_state['profile_weight'] = user_data.get('weight', 0.0) or 0.0
-                st.session_state['profile_username'] = user_data.get('username', user_data.get('email', ''))
-                st.rerun()
+                st.session_state['profile_name'] = user_data.get('name') or ''
+                st.session_state['profile_age'] = int(user_data.get('age') or 0)
+                st.session_state['profile_height'] = float(user_data.get('height') or 0.0)
+                st.session_state['profile_weight'] = float(user_data.get('weight') or 0.0)
+                st.session_state['profile_username'] = user_data.get('username') or email
+                st.experimental_rerun()
+
 
 def security_section():
     st.markdown("### 🔒 Security Settings")
