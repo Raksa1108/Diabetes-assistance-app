@@ -32,14 +32,19 @@ def history_section():
     st.markdown("View and manage all your past prediction records.")
 
     # Get current user's email for user-specific history file
-    user = st.session_state['current_user']
-    email = user.get('email')
-    if not email:
+    user = st.session_state.get('current_user')
+    if not user or not user.get('email'):
         st.error("User email not found. Please log in again.")
         return
     
+    email = user['email']
+    # Ensure the data directory exists
+    data_dir = "data"
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    
     # Use user-specific history file
-    HISTORY_FILE = f"data/prediction_history_{email.replace('@', '_').replace('.', '_')}.csv"
+    HISTORY_FILE = os.path.join(data_dir, f"prediction_history_{email.replace('@', '_').replace('.', '_')}.csv")
 
     if os.path.exists(HISTORY_FILE):
         try:
@@ -49,9 +54,7 @@ def history_section():
                 # Handle timestamp conversion safely
                 if 'Timestamp' in history_df.columns:
                     try:
-                        # Ensure timestamps are parsed correctly
                         history_df['Timestamp'] = pd.to_datetime(history_df['Timestamp'], errors='coerce')
-                        # Only convert to IST if timestamps are timezone-naive
                         if history_df['Timestamp'].dt.tz is None:
                             history_df['Timestamp'] = history_df['Timestamp'].dt.tz_localize('UTC').dt.tz_convert(IST)
                         else:
@@ -71,12 +74,16 @@ def history_section():
 
                 # Clear history
                 if st.button("🗑️ Clear History"):
-                    os.remove(HISTORY_FILE)
-                    st.success("✅ Prediction history cleared successfully.")
+                    try:
+                        os.remove(HISTORY_FILE)
+                        st.success("✅ Prediction history cleared successfully.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to clear history file: {str(e)}")
             else:
                 st.info("History file exists but has no records.")
         except Exception as e:
-            st.error(f"Failed to load history file: {str(e)}")
+            st.error(f"Failed to load history file: {str(e)}. Please ensure the file is accessible.")
     else:
         st.info("No prediction history found yet. Make a prediction to start building history.")
 
@@ -130,9 +137,7 @@ def profile_section():
         with col1:
             if st.button("Save Changes", key="save_profile"):
                 try:
-                    # Only update fields that exist in the schema
                     update_data = {"name": st.session_state['profile_name']}
-                    # Check if columns exist in schema (optional, based on schema validation)
                     supabase.table("users").update(update_data).eq("email", email).execute()
                     st.session_state['current_user'] = get_user_by_email(email)
                     st.session_state['profile_edit_mode'] = False
@@ -165,7 +170,6 @@ def security_section():
         st.error("User data not found in database. Please contact support.")
         return
 
-    # Initialize session state for security settings
     if 'security_password_verified' not in st.session_state:
         st.session_state['security_password_verified'] = False
     if 'security_edit_mode' not in st.session_state:
