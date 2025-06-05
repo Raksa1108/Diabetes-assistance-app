@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from data.base import st_style, head
 from supabase_client import supabase
-from zoneinfo import ZoneInfo
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -36,12 +36,25 @@ def history_section():
     email = user['email']
 
     try:
-        response = supabase.table("predictions").select("*").eq("user_email", email).order("timestamp", desc=True).execute()
+        response = (
+            supabase.table("predictions")
+            .select("*")
+            .eq("user_email", email)
+            .order("timestamp", desc=True)
+            .execute()
+        )
         history_data = response.data
         if history_data:
             history_df = pd.DataFrame(history_data)
             history_df['timestamp'] = pd.to_datetime(history_df['timestamp']).dt.tz_convert(IST)
-            st.dataframe(history_df[['timestamp', 'pregnancies', 'glucose', 'blood_pressure', 'skin_thickness', 'insulin', 'bmi', 'diabetes_pedigree_function', 'age', 'risk_percent', 'prediction']], use_container_width=True)
+            st.dataframe(
+                history_df[[
+                    'timestamp', 'pregnancies', 'glucose', 'blood_pressure',
+                    'skin_thickness', 'insulin', 'bmi',
+                    'diabetes_pedigree_function', 'age', 'risk_percent', 'prediction'
+                ]],
+                use_container_width=True
+            )
 
             csv = history_df.to_csv(index=False).encode('utf-8')
             st.download_button(
@@ -65,10 +78,11 @@ def profile_section():
     st.markdown("View and edit your profile information.")
 
     user = st.session_state.get('current_user')
-    email = user.get('email') if user else None
-    if not email:
+    if not user or not user.get('email'):
         st.error("User email not found. Please log in again.")
         return
+
+    email = user['email']
 
     user_data = get_user_by_email(email)
     if not user_data:
@@ -86,8 +100,7 @@ def profile_section():
     if 'profile_weight' not in st.session_state:
         st.session_state['profile_weight'] = user_data.get('weight', 0.0) or 0.0
 
-    # Username is email, display only (no update)
-    st.session_state['profile_username'] = email
+    st.session_state['profile_username'] = email  # email as username display, not editable
 
     if not st.session_state['profile_edit_mode']:
         st.subheader("Profile Information")
@@ -111,9 +124,9 @@ def profile_section():
                 try:
                     update_data = {
                         "name": st.session_state['profile_name'],
-                        "age": int(st.session_state['profile_age']),
-                        "height": float(st.session_state['profile_height']),
-                        "weight": float(st.session_state['profile_weight']),
+                        "age": st.session_state['profile_age'],
+                        "height": st.session_state['profile_height'],
+                        "weight": st.session_state['profile_weight'],
                     }
                     supabase.table("users").update(update_data).eq("email", email).execute()
                     st.session_state['current_user'] = get_user_by_email(email)
@@ -125,6 +138,7 @@ def profile_section():
         with col2:
             if st.button("Cancel", key="cancel_profile"):
                 st.session_state['profile_edit_mode'] = False
+                # Reset fields to user data
                 st.session_state['profile_name'] = user_data.get('name', '')
                 st.session_state['profile_age'] = user_data.get('age', 0) or 0
                 st.session_state['profile_height'] = user_data.get('height', 0.0) or 0.0
@@ -136,30 +150,35 @@ def security_section():
     st.markdown("Manage your password and security questions.")
 
     user = st.session_state.get('current_user')
-    email = user.get('email') if user else None
-    if not email:
+    if not user or not user.get('email'):
         st.error("User email not found. Please log in again.")
         return
+
+    email = user['email']
 
     user_data = get_user_by_email(email)
     if not user_data:
         st.error("User data not found in database. Please contact support.")
         return
 
+    # Initialize session state variables for security
     if 'security_password_verified' not in st.session_state:
         st.session_state['security_password_verified'] = False
     if 'security_edit_mode' not in st.session_state:
         st.session_state['security_edit_mode'] = False
     if 'security_questions' not in st.session_state:
-        st.session_state['security_questions'] = list(user_data.get('security_questions', {}).keys())
+        sq = user_data.get('security_questions', {})
+        st.session_state['security_questions'] = list(sq.keys())
     if 'security_answers' not in st.session_state:
-        st.session_state['security_answers'] = list(user_data.get('security_questions', {}).values())
+        sq = user_data.get('security_questions', {})
+        st.session_state['security_answers'] = list(sq.values())
 
     if not st.session_state['security_password_verified']:
         st.subheader("Verify Current Password")
         current_password = st.text_input("Enter Current Password", type="password", key="verify_current_password")
         if st.button("Verify Password", key="verify_password"):
-            if current_password == user_data['password']:
+            # Simple plain-text check; ideally passwords should be hashed & checked securely
+            if current_password == user_data.get('password', ''):
                 st.session_state['security_password_verified'] = True
                 st.success("Password verified successfully!")
                 st.experimental_rerun()
@@ -239,8 +258,10 @@ def security_section():
             with col2:
                 if st.button("Cancel", key="cancel_questions"):
                     st.session_state['security_password_verified'] = False
-                    st.session_state['security_questions'] = list(user_data.get('security_questions', {}).keys())
-                    st.session_state['security_answers'] = list(user_data.get('security_questions', {}).values())
+                    # Reset to previous questions/answers from DB
+                    sq = user_data.get('security_questions', {})
+                    st.session_state['security_questions'] = list(sq.keys())
+                    st.session_state['security_answers'] = list(sq.values())
                     st.experimental_rerun()
 
 def app():
@@ -251,7 +272,7 @@ def app():
     st.markdown("Manage your prediction history, profile, and security settings.")
 
     tabs = st.tabs(["History", "Profile", "Security"])
-    
+
     with tabs[0]:
         history_section()
     with tabs[1]:
