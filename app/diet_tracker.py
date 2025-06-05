@@ -10,6 +10,14 @@ import json
 import os
 from data.base import st_style, head
 
+# Timezone import for IST
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+    IST = ZoneInfo("Asia/Kolkata")
+except ImportError:
+    from pytz import timezone
+    IST = timezone("Asia/Kolkata")
+
 @st.cache_data
 def load_datasets():
     try:
@@ -113,17 +121,14 @@ def load_meal_log():
         return []
 
 def app():
-    
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
     food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
 
-   
     if 'daily_goal' not in st.session_state:
         st.session_state.daily_goal = 2000
     if 'meal_log' not in st.session_state:
         st.session_state.meal_log = load_meal_log()
 
-  
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
 
@@ -162,8 +167,7 @@ def app():
     col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
         selected_serving = st.selectbox("Select Serving Size", list(serving_sizes.keys()))
-    with col2:
-        if selected_serving == "Custom (grams)":
+    with col2 "Custom (grams)":
             quantity_per_piece = st.number_input("Quantity per piece (in grams)", min_value=1, max_value=1000, step=1)
         else:
             quantity_per_piece = serving_sizes[selected_serving]
@@ -179,11 +183,7 @@ def app():
         if not typed_food:
             st.error("Please type a food name to log.")
         elif selected_food:
-            best_match = food_df[food_df['food'] == selected_food].iloc[0]
-            calories_per_100g = float(best_match["calories"])
-            calories = (calories_per_100g / 100) * total_quantity
-            st.session_state.meal_log.append({
-                "timestamp": datetime.now(),
+            best_match = food_df[food_df['food'] == selected_food].iloc "timestamp": datetime.now(IST),
                 "meal_time": meal_time,
                 "food": best_match["food"],
                 "quantity": total_quantity,
@@ -197,7 +197,7 @@ def app():
             if cal and carbs is not None:
                 total_calories = cal * (total_quantity / 100)
                 st.session_state.meal_log.append({
-                    "timestamp": datetime.now(),
+                    "timestamp": datetime.now(IST),
                     "meal_time": meal_time,
                     "food": typed_food,
                     "quantity": total_quantity,
@@ -217,7 +217,7 @@ def app():
                 fat_input = st.number_input("Fat per 100g", min_value=0.0, key="manual_fat")
                 if calories_input > 0:
                     st.session_state.meal_log.append({
-                        "timestamp": datetime.now(),
+                        "timestamp": datetime.now(IST),
                         "meal_time": meal_time,
                         "food": typed_food,
                         "quantity": total_quantity,
@@ -237,15 +237,14 @@ def app():
         save_meal_log(st.session_state.meal_log)
         st.success("All logged meals cleared.")
 
-    
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
-    
+
     if st.session_state.meal_log:
         df = pd.DataFrame(st.session_state.meal_log)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_selected_date = df[df['timestamp'].dt.date == selected_date]
-        
+
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
         else:
@@ -254,7 +253,6 @@ def app():
     else:
         st.info("No meals logged yet.")
 
-   
     st.markdown("### 📊 Daily Summary")
     if st.session_state.meal_log:
         df = pd.DataFrame(st.session_state.meal_log)
@@ -324,7 +322,6 @@ def app():
             else:
                 st.info("No macronutrient data available to plot.")
 
-            
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
             fig2, ax2 = plt.subplots()
@@ -334,7 +331,6 @@ def app():
             ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state.daily_goal * 0.3))
             st.pyplot(fig2)
 
-            
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
             today = date.today()
             past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]  # 7 days ascending
