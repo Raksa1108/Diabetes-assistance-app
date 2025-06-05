@@ -283,7 +283,7 @@ def app():
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
 
-    meal_log = load_meal_log(email)  # Load from Supabase
+    meal_log = load_meal_log(email)
     if meal_log:
         df = pd.DataFrame(meal_log)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -307,7 +307,7 @@ def app():
         if df_today.empty:
             st.info("No meals logged for today.")
         else:
-            st.subheader("Today's Meals")
+            st.subheader("Today's Logged Meals")
             for i, row in enumerate(df_today.sort_values("timestamp", ascending=False).to_dict('records')):
                 cols = st.columns([2, 2, 2, 2, 1])
                 with cols[0]:
@@ -333,7 +333,7 @@ def app():
             total_protein = df_today["protein"].sum() if "protein" in df_today.columns else 0
             total_fat = df_today["fat"].sum() if "fat" in df_today.columns else 0
 
-            col1, col2 = st.columns([2, 3])
+            col1, col2, col3 = st.columns([3, 1, 1])
             with col1:
                 st.markdown(
                     f"<h3 style='color: {'green' if total_calories <= st.session_state.daily_goal else 'red'};'>Calories Consumed: {total_calories:.2f} kcal</h3>", 
@@ -343,6 +343,7 @@ def app():
                 st.progress(progress)
             with col2:
                 st.metric("Daily Calorie Goal", f"{st.session_state.daily_goal} kcal")
+            with col3:
                 st.metric("Remaining Calories", f"{max(st.session_state.daily_goal - total_calories, 0):.2f} kcal")
 
             nutrients = {
@@ -350,7 +351,7 @@ def app():
                 "Proteins": total_protein,
                 "Fats": total_fat,
             }
-            nutrients = {k: v for k, v in nutrients.items() if v and not np.isnan(v)}
+            nutrients = {k: v for k, v in nutrients.items() if v and not pd.isna(v)}
 
             if nutrients:
                 fig, ax = plt.subplots()
@@ -368,12 +369,12 @@ def app():
 
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
-            fig, ax = plt.subplots()
-            ax.bar(calories_mealtime.index, calories_mealtime.values, color='#4a90e2')
-            ax.set_ylabel("Calories (kcal)")
-            ax.set_xlabel("Meal Time")
-            ax.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state.daily_goal * 0.3))
-            st.pyplot(fig)
+            fig2, ax2 = plt.subplots()
+            ax2.bar(calories_mealtime.index, calories_mealtime.values, color='#4a90e2')
+            ax2.set_ylabel("Calories (kcal)")
+            ax2.set_xlabel("Meal Time")
+            ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state.daily_goal * 0.3))
+            st.pyplot(fig2)
 
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
             today = date.today()
@@ -381,24 +382,24 @@ def app():
             df['date_only'] = df['timestamp'].dt.date
             weekly_calories = df.groupby('date_only')['calories'].sum().reindex(past_week, fill_value=0)
 
-            fig, ax = plt.subplots()
-            ax.plot(past_week, weekly_calories.values, marker='o', linestyle='-', color='#ff7f0e')
-            ax.set_title("Calories Consumed Over Past 7 Days")
-            ax.set_ylabel("Calories (kcal)")
-            ax.set_xlabel("Date")
-            ax.set_xticks(past_week)
-            ax.set_xticklabels([d.strftime("%a %d") for d in range past_week], rotation=45)
-            ax.axhline(y=st.session_state.daily_goal, color='green', linestyle='--', label='Daily Goal')
-            ax.legend()
-            st.pyplot(fig)
+            fig3, ax3 = plt.subplots()
+            ax3.plot(past_week, weekly_calories.values, marker='o', linestyle='-', color='#ff7f0e')
+            ax3.set_title("Calories Consumed Over Past 7 Days")
+            ax3.set_ylabel("Calories (kcal)")
+            ax3.set_xlabel("Date")
+            ax3.set_xticks(past_week)
+            ax3.set_xticklabels([d.strftime("%a %d") for d in past_week], rotation=45)
+            ax3.axhline(st.session_state.daily_goal, color='green', linestyle='--', label='Daily Goal')
+            ax3.legend()
+            st.pyplot(fig3)
 
-            if st.button("Download PDF Report"):
+            if st.button("Download Daily Report PDF"):
                 pdf_bytes = generate_pdf_report(df_today.to_dict('records'), st.session_state.daily_goal)
                 st.download_button(
                     label="Download PDF",
                     data=pdf_bytes,
                     file_name=f"diet_report_{date.today()}.pdf",
-                    mime="text/plain"
+                    mime="application/pdf"
                 )
     else:
         st.info("No meals logged yet today.")
