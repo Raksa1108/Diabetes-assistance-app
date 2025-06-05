@@ -3,12 +3,11 @@ import pandas as pd
 import joblib
 import os
 from datetime import datetime
-from functions.function import make_donut
+import plotly.express as px
 from data.base import st_style, head
 
 HISTORY_FILE = "data/prediction_history.csv"
 MODEL_PATH = os.path.join("datasets", "diabetes_model.pkl")
-
 
 model = joblib.load(MODEL_PATH)
 
@@ -20,14 +19,22 @@ def app():
     st.title("🧪 AI-based Diabetes Risk Prediction")
     st.subheader("📋 Enter your health information:")
 
-    pregnancies = st.number_input("Pregnancies", min_value=0, max_value=20, value=0)
-    glucose = st.number_input("Glucose", min_value=0, max_value=200, value=120)
-    blood_pressure = st.number_input("Blood Pressure", min_value=0, max_value=150, value=70)
-    skin_thickness = st.number_input("Skin Thickness", min_value=0, max_value=100, value=20)
-    insulin = st.number_input("Insulin", min_value=0, max_value=900, value=79)
-    bmi = st.number_input("BMI", min_value=0.0, max_value=67.0, value=25.0)
-    dpf = st.number_input("Diabetes Pedigree Function", min_value=0.0, max_value=2.5, value=0.5)
-    age = st.number_input("Age", min_value=1, max_value=120, value=30)
+    pregnancies = st.number_input("Pregnancies", min_value=0, max_value=20, value=0,
+                                  help="Number of times you have been pregnant.")
+    glucose = st.number_input("Glucose", min_value=0, max_value=200, value=120,
+                              help="Plasma glucose concentration over 2 hours in an oral glucose tolerance test.")
+    blood_pressure = st.number_input("Blood Pressure", min_value=0, max_value=150, value=70,
+                                     help="Diastolic blood pressure (mm Hg).")
+    skin_thickness = st.number_input("Skin Thickness", min_value=0, max_value=100, value=20,
+                                     help="Triceps skin fold thickness (mm).")
+    insulin = st.number_input("Insulin", min_value=0, max_value=900, value=79,
+                              help="2-Hour serum insulin (mu U/ml).")
+    bmi = st.number_input("BMI", min_value=0.0, max_value=67.0, value=25.0,
+                          help="Body Mass Index (weight in kg/(height in m)^2).")
+    dpf = st.number_input("Diabetes Pedigree Function", min_value=0.0, max_value=2.5, value=0.5,
+                          help="Function which scores likelihood of diabetes based on family history.")
+    age = st.number_input("Age", min_value=1, max_value=120, value=30,
+                          help="Your age in years.")
 
     input_dict = {
         'Pregnancies': pregnancies,
@@ -54,7 +61,16 @@ def app():
         st.subheader("🔮 Prediction Result")
         st.success(message)
         st.metric("Predicted Risk (%)", f"{risk_percent:.2f}%")
-        st.altair_chart(make_donut(risk_percent, label="Risk Level", input_color='red' if prediction == 1 else 'green'))
+
+        # Pie Chart
+        fig = px.pie(
+            names=["Diabetes Risk", "No Risk"],
+            values=[risk_percent, 100 - risk_percent],
+            title="Risk Distribution",
+            color_discrete_sequence=["red", "green"]
+        )
+        fig.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig, use_container_width=True)
 
         result_row = input_dict.copy()
         result_row["Risk (%)"] = round(risk_percent, 2)
@@ -70,5 +86,3 @@ def app():
         history_df.to_csv(HISTORY_FILE, index=False)
 
         st.markdown("---")
-        st.markdown("💖 Thank you for using our diabetes prediction app!")
-
