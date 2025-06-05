@@ -29,11 +29,8 @@ def get_user_by_email(email):
     return response.data[0] if response.data else None
 
 def history_section():
-    st.markdown(st_style, unsafe_allow_html=True)
-    st.markdown(head, unsafe_allow_html=True)
-
-    st.title("🕓 Prediction History")
-    st.markdown("Here you can view and manage all your past prediction records.")
+    st.markdown("### 🕓 Prediction History")
+    st.markdown("View and manage all your past prediction records.")
 
     if os.path.exists(HISTORY_FILE):
         history_df = pd.read_csv(HISTORY_FILE)
@@ -63,27 +60,31 @@ def history_section():
         st.info("No prediction history found yet. Make a prediction to start building history.")
 
 def profile_section():
-    st.markdown(st_style, unsafe_allow_html=True)
-    st.markdown(head, unsafe_allow_html=True)
-
-    st.title("👤 User Profile")
+    st.markdown("### 👤 User Profile")
     st.markdown("View and edit your profile information.")
 
     user = st.session_state['current_user']
-    email = user['email']
-    user_data = get_user_by_email(email)
+    email = user.get('email')
+    if not email:
+        st.error("User email not found. Please log in again.")
+        return
 
-    # Initialize session state for profile fields
+    user_data = get_user_by_email(email)
+    if not user_data:
+        st.error("User data not found in database. Please contact support.")
+        return
+
+    # Initialize session state for profile fields with defaults
     if 'profile_edit_mode' not in st.session_state:
         st.session_state['profile_edit_mode'] = False
     if 'profile_name' not in st.session_state:
         st.session_state['profile_name'] = user_data.get('name', '')
     if 'profile_age' not in st.session_state:
-        st.session_state['profile_age'] = user_data.get('age', 0)
+        st.session_state['profile_age'] = user_data.get('age', 0) or 0
     if 'profile_height' not in st.session_state:
-        st.session_state['profile_height'] = user_data.get('height', 0.0)
+        st.session_state['profile_height'] = user_data.get('height', 0.0) or 0.0
     if 'profile_weight' not in st.session_state:
-        st.session_state['profile_weight'] = user_data.get('weight', 0.0)
+        st.session_state['profile_weight'] = user_data.get('weight', 0.0) or 0.0
     if 'profile_username' not in st.session_state:
         st.session_state['profile_username'] = user_data.get('username', user_data.get('email', ''))
 
@@ -107,39 +108,48 @@ def profile_section():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Save Changes"):
-                supabase.table("users").update({
-                    "name": st.session_state['profile_name'],
-                    "age": st.session_state['profile_age'],
-                    "height": st.session_state['profile_height'],
-                    "weight": st.session_state['profile_weight'],
-                    "username": st.session_state['profile_username']
-                }).eq("email", email).execute()
-                st.session_state['current_user'] = get_user_by_email(email)
-                st.session_state['profile_edit_mode'] = False
-                st.success("Profile updated successfully!")
-                st.rerun()
+                try:
+                    supabase.table("users").update({
+                        "name": st.session_state['profile_name'],
+                        "age": st.session_state['profile_age'],
+                        "height": st.session_state['profile_height'],
+                        "weight": st.session_state['profile_weight'],
+                        "username": st.session_state['profile_username']
+                    }).eq("email", email).execute()
+                    st.session_state['current_user'] = get_user_by_email(email)
+                    st.session_state['profile_edit_mode'] = False
+                    st.success("Profile updated successfully!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to update profile: {str(e)}")
         with col2:
             if st.button("Cancel"):
                 st.session_state['profile_edit_mode'] = False
                 st.session_state['profile_name'] = user_data.get('name', '')
-                st.session_state['profile_age'] = user_data.get('age', 0)
-                st.session_state['profile_height'] = user_data.get('height', 0.0)
-                st.session_state['profile_weight'] = user_data.get('weight', 0.0)
+                st.session_state['profile_age'] = user_data.get('age', 0) or 0
+                st.session_state['profile_height'] = user_data.get('height', 0.0) or 0.0
+                st.session_state['profile_weight'] = user_data.get('weight', 0.0) or 0.0
                 st.session_state['profile_username'] = user_data.get('username', user_data.get('email', ''))
                 st.rerun()
 
 def security_section():
-    st.markdown(st_style, unsafe_allow_html=True)
-    st.markdown(head, unsafe_allow_html=True)
-
-    st.title("🔒 Security Settings")
+    st.markdown("### 🔒 Security Settings")
     st.markdown("Manage your password and security questions.")
 
     user = st.session_state['current_user']
-    email = user['email']
+    email = user.get('email')
+    if not email:
+        st.error("User email not found. Please log in again.")
+        return
+
     user_data = get_user_by_email(email)
+    if not user_data:
+        st.error("User data not found in database. Please contact support.")
+        return
 
     # Initialize session state for security settings
+    if 'security_password_verified' not in st.session_state:
+        st.session_state['security_password_verified'] = False
     if 'security_edit_mode' not in st.session_state:
         st.session_state['security_edit_mode'] = False
     if 'security_questions' not in st.session_state:
@@ -147,70 +157,81 @@ def security_section():
     if 'security_answers' not in st.session_state:
         st.session_state['security_answers'] = list(user_data.get('security_questions', {}).values())
 
-    if not st.session_state['security_edit_mode']:
-        st.subheader("Current Security Settings")
-        st.write("**Security Questions**:")
-        for q, a in zip(st.session_state['security_questions'], st.session_state['security_answers']):
-            st.write(f"- {q}: {a}")
-        if st.button("Edit Security Settings"):
-            st.session_state['security_edit_mode'] = True
+    if not st.session_state['security_password_verified']:
+        st.subheader("Verify Current Password")
+        current_password = st.text_input("Enter Current Password", type="password", key="verify_current_password")
+        if st.button("Verify Password"):
+            if current_password == user_data['password']:
+                st.session_state['security_password_verified'] = True
+                st.success("Password verified successfully!")
+                st.rerun()
+            else:
+                st.error("Incorrect password. Please try again.")
     else:
-        st.subheader("Change Password and Security Questions")
-        current_password = st.text_input("Current Password", type="password", key="current_password")
-        new_password = st.text_input("New Password", type="password", key="new_password")
-        confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_password")
-
-        st.markdown("### Update Security Questions (select exactly 5)")
-        new_questions = st.multiselect(
-            "Select 5 security questions",
-            options=SECURITY_QUESTIONS,
-            default=st.session_state['security_questions'],
-            key="new_security_questions",
-            max_selections=5
-        )
-
-        new_answers = []
-        if len(new_questions) == 5:
-            for i, q in enumerate(new_questions):
-                ans = st.text_input(f"Answer for: {q}", key=f"new_answer_{i}")
-                new_answers.append(ans)
+        if not st.session_state['security_edit_mode']:
+            st.subheader("Current Security Settings")
+            st.write("**Security Questions**:")
+            for q, a in zip(st.session_state['security_questions'], st.session_state['security_answers']):
+                st.write(f"- {q}: {a}")
+            if st.button("Edit Security Settings"):
+                st.session_state['security_edit_mode'] = True
         else:
-            st.info("Please select exactly 5 security questions.")
+            st.subheader("Change Password and Security Questions")
+            new_password = st.text_input("New Password (leave blank to keep current)", type="password", key="new_password")
+            confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_password")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Save Security Changes"):
-                if current_password != user_data['password']:
-                    st.error("Current password is incorrect.")
-                    return
-                if new_password and new_password != confirm_password:
-                    st.error("New passwords do not match.")
-                    return
-                if len(new_questions) != 5:
-                    st.error("You must select exactly 5 security questions.")
-                    return
-                if any(not a.strip() for a in new_answers):
-                    st.error("Please answer all selected security questions.")
-                    return
+            st.markdown("### Update Security Questions (select exactly 5)")
+            new_questions = st.multiselect(
+                "Select 5 security questions",
+                options=SECURITY_QUESTIONS,
+                default=st.session_state['security_questions'],
+                key="new_security_questions",
+                max_selections=5
+            )
 
-                update_data = {}
-                if new_password:
-                    update_data["password"] = new_password
-                update_data["security_questions"] = dict(zip(new_questions, new_answers))
+            new_answers = []
+            if len(new_questions) == 5:
+                for i, q in enumerate(new_questions):
+                    ans = st.text_input(f"Answer for: {q}", key=f"new_answer_{i}")
+                    new_answers.append(ans)
+            else:
+                st.info("Please select exactly 5 security questions.")
 
-                supabase.table("users").update(update_data).eq("email", email).execute()
-                st.session_state['current_user'] = get_user_by_email(email)
-                st.session_state['security_edit_mode'] = False
-                st.session_state['security_questions'] = new_questions
-                st.session_state['security_answers'] = new_answers
-                st.success("Security settings updated successfully!")
-                st.rerun()
-        with col2:
-            if st.button("Cancel"):
-                st.session_state['security_edit_mode'] = False
-                st.session_state['security_questions'] = list(user_data.get('security_questions', {}).keys())
-                st.session_state['security_answers'] = list(user_data.get('security_questions', {}).values())
-                st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Save Security Changes"):
+                    if new_password and new_password != confirm_password:
+                        st.error("New passwords do not match.")
+                        return
+                    if len(new_questions) != 5:
+                        st.error("You must select exactly 5 security questions.")
+                        return
+                    if any(not a.strip() for a in new_answers):
+                        st.error("Please answer all selected security questions.")
+                        return
+
+                    update_data = {"security_questions": dict(zip(new_questions, new_answers))}
+                    if new_password:
+                        update_data["password"] = new_password
+
+                    try:
+                        supabase.table("users").update(update_data).eq("email", email).execute()
+                        st.session_state['current_user'] = get_user_by_email(email)
+                        st.session_state['security_edit_mode'] = False
+                        st.session_state['security_password_verified'] = False
+                        st.session_state['security_questions'] = new_questions
+                        st.session_state['security_answers'] = new_answers
+                        st.success("Security settings updated successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to update security settings: {str(e)}")
+            with col2:
+                if st.button("Cancel"):
+                    st.session_state['security_edit_mode'] = False
+                    st.session_state['security_password_verified'] = False
+                    st.session_state['security_questions'] = list(user_data.get('security_questions', {}).keys())
+                    st.session_state['security_answers'] = list(user_data.get('security_questions', {}).values())
+                    st.rerun()
 
 def app():
     st.markdown(st_style, unsafe_allow_html=True)
@@ -219,11 +240,11 @@ def app():
     st.title("⚙️ Settings")
     st.markdown("Manage your prediction history, profile, and security settings.")
 
-    settings_mode = st.sidebar.radio("Settings Options", ["History", "Profile", "Security"])
-
-    if settings_mode == "History":
+    tabs = st.tabs(["History", "Profile", "Security"])
+    
+    with tabs[0]:
         history_section()
-    elif settings_mode == "Profile":
+    with tabs[1]:
         profile_section()
-    elif settings_mode == "Security":
+    with tabs[2]:
         security_section()
