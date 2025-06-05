@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from functions.function import make_donut
 from data.base import st_style, head
-from supabase_client import supabase  # Import supabase client for user data
+from supabase_client import supabase
 
 MODEL_PATH = os.path.join("datasets", "diabetes_model.pkl")
 
@@ -25,14 +25,6 @@ def app():
     
     email = user['email']
     
-    # Ensure the data directory exists
-    data_dir = "data"
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
-    
-    # Use user-specific history file
-    HISTORY_FILE = os.path.join(data_dir, f"prediction_history_{email.replace('@', '_').replace('.', '_')}.csv")
-
     # Apply custom styles
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
@@ -90,20 +82,22 @@ def app():
                 use_container_width=True
             )
 
-            # Save to history
-            result_row = input_dict.copy()
-            result_row["Risk (%)"] = round(risk_percent, 2)
-            result_row["Prediction"] = label
-            result_row["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+            # Save to predictions table
             try:
-                if os.path.exists(HISTORY_FILE):
-                    history_df = pd.read_csv(HISTORY_FILE)
-                    history_df = pd.concat([history_df, pd.DataFrame([result_row])], ignore_index=True)
-                else:
-                    history_df = pd.DataFrame([result_row])
-
-                history_df.to_csv(HISTORY_FILE, index=False)
+                supabase.table("predictions").insert({
+                    "user_email": email,
+                    "timestamp": datetime.now().isoformat(),
+                    "pregnancies": int(pregnancies),
+                    "glucose": int(glucose),
+                    "blood_pressure": int(blood_pressure),
+                    "skin_thickness": int(skin_thickness),
+                    "insulin": int(insulin),
+                    "bmi": float(bmi),
+                    "diabetes_pedigree_function": float(dpf),
+                    "age": int(age),
+                    "risk_percent": round(risk_percent, 2),
+                    "prediction": label
+                }).execute()
                 st.success("Prediction saved to history.")
             except Exception as e:
                 st.error(f"Failed to save prediction to history: {str(e)}")
