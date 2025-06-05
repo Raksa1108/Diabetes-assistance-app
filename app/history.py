@@ -54,7 +54,7 @@ def history_section():
             if st.button("🗑️ Clear History"):
                 supabase.table("predictions").delete().eq("user_email", email).execute()
                 st.success("✅ Prediction history cleared successfully.")
-                st.rerun()
+                st.experimental_rerun()
         else:
             st.info("No prediction history found yet. Make a prediction to start building history.")
     except Exception as e:
@@ -64,8 +64,8 @@ def profile_section():
     st.markdown("### 👤 User Profile")
     st.markdown("View and edit your profile information.")
 
-    user = st.session_state['current_user']
-    email = user.get('email')
+    user = st.session_state.get('current_user')
+    email = user.get('email') if user else None
     if not email:
         st.error("User email not found. Please log in again.")
         return
@@ -86,7 +86,7 @@ def profile_section():
     if 'profile_weight' not in st.session_state:
         st.session_state['profile_weight'] = user_data.get('weight', 0.0) or 0.0
 
-    # Use email as the username display, no update needed
+    # Username is email, display only (no update)
     st.session_state['profile_username'] = email
 
     if not st.session_state['profile_edit_mode']:
@@ -111,16 +111,15 @@ def profile_section():
                 try:
                     update_data = {
                         "name": st.session_state['profile_name'],
-                        "age": st.session_state['profile_age'],
-                        "height": st.session_state['profile_height'],
-                        "weight": st.session_state['profile_weight']
-                        # No username field here!
+                        "age": int(st.session_state['profile_age']),
+                        "height": float(st.session_state['profile_height']),
+                        "weight": float(st.session_state['profile_weight']),
                     }
                     supabase.table("users").update(update_data).eq("email", email).execute()
                     st.session_state['current_user'] = get_user_by_email(email)
                     st.session_state['profile_edit_mode'] = False
                     st.success("Profile updated successfully!")
-                    st.rerun()
+                    st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Failed to update profile: {str(e)}")
         with col2:
@@ -130,15 +129,14 @@ def profile_section():
                 st.session_state['profile_age'] = user_data.get('age', 0) or 0
                 st.session_state['profile_height'] = user_data.get('height', 0.0) or 0.0
                 st.session_state['profile_weight'] = user_data.get('weight', 0.0) or 0.0
-                st.rerun()
-
+                st.experimental_rerun()
 
 def security_section():
     st.markdown("### 🔒 Security Settings")
     st.markdown("Manage your password and security questions.")
 
-    user = st.session_state['current_user']
-    email = user.get('email')
+    user = st.session_state.get('current_user')
+    email = user.get('email') if user else None
     if not email:
         st.error("User email not found. Please log in again.")
         return
@@ -164,7 +162,7 @@ def security_section():
             if current_password == user_data['password']:
                 st.session_state['security_password_verified'] = True
                 st.success("Password verified successfully!")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Incorrect password. Please try again.")
     else:
@@ -190,13 +188,13 @@ def security_section():
                         st.session_state['current_user'] = get_user_by_email(email)
                         st.session_state['security_password_verified'] = False
                         st.success("Password updated successfully!")
-                        st.rerun()
+                        st.experimental_rerun()
                     except Exception as e:
                         st.error(f"Failed to update password: {str(e)}")
             with col2:
                 if st.button("Cancel", key="cancel_password"):
                     st.session_state['security_password_verified'] = False
-                    st.rerun()
+                    st.experimental_rerun()
 
         elif option == "Update Security Questions":
             st.subheader("Update Security Questions")
@@ -235,7 +233,7 @@ def security_section():
                         st.session_state['security_questions'] = new_questions
                         st.session_state['security_answers'] = new_answers
                         st.success("Security questions updated successfully!")
-                        st.rerun()
+                        st.experimental_rerun()
                     except Exception as e:
                         st.error(f"Failed to update security questions: {str(e)}")
             with col2:
@@ -243,7 +241,7 @@ def security_section():
                     st.session_state['security_password_verified'] = False
                     st.session_state['security_questions'] = list(user_data.get('security_questions', {}).keys())
                     st.session_state['security_answers'] = list(user_data.get('security_questions', {}).values())
-                    st.rerun()
+                    st.experimental_rerun()
 
 def app():
     st.markdown(st_style, unsafe_allow_html=True)
