@@ -6,14 +6,12 @@ from datetime import datetime, date, timedelta
 import numpy as np
 from fpdf import FPDF
 from io import BytesIO
-import json
-import os
 from data.base import st_style, head
 from supabase_client import supabase
 
 # Timezone import for IST
 try:
-    from zoneinfo import ZoneInfo  # Python 3.9+
+    from zoneinfo import ZoneInfo
     IST = ZoneInfo("Asia/Kolkata")
 except ImportError:
     from pytz import timezone
@@ -35,7 +33,7 @@ def load_datasets():
 
 def merge_datasets(*datasets):
     dfs = []
-    for df in datasets[:-1]:  # first five datasets
+    for df in datasets[:-1]:
         if df is not None:
             df.columns = [col.lower().strip() for col in df.columns]
             if 'food' in df.columns and 'calories' in df.columns:
@@ -99,34 +97,32 @@ def generate_pdf_report(meal_log, daily_goal):
     pdf_output.seek(0)
     return pdf_output
 
-def save_meal_log(meal_log, email):
-    """Save meal log to a user-specific JSON file for persistence."""
-    data_dir = "data"
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
-    meal_log_file = os.path.join(data_dir, f"meal_log_{email.replace('@', '_').replace('.', '_')}.json")
+def save_meal_log(meal, email):
+    """Save a single meal to Supabase meal_logs table."""
     try:
-        with open(meal_log_file, "w") as f:
-            serializable_log = []
-            for meal in meal_log:
-                meal_copy = meal.copy()
-                meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
-                serializable_log.append(meal_copy)
-            json.dump(serializable_log, f)
+        supabase.table("meal_logs").insert({
+            "user_email": email,
+            "timestamp": meal['timestamp'].isoformat(),
+            "meal_time": meal['meal_time'],
+            "food": meal['food'],
+            "quantity": float(meal['quantity']),
+            "calories": float(meal['calories']),
+            "carbs": float(meal.get('carbs', None)) if meal.get('carbs') is not None else None,
+            "protein": float(meal.get('protein', None)) if meal.get('protein') is not None else None,
+            "fat": float(meal.get('fat', None)) if meal.get('fat') is not None else None,
+            "source": meal['source']
+        }).execute()
     except Exception as e:
         st.error(f"Failed to save meal log: {e}")
 
 def load_meal_log(email):
-    """Load meal log from a user-specific JSON file."""
-    meal_log_file = os.path.join("data", f"meal_log_{email.replace('@', '_').replace('.', '_')}.json")
+    """Load meal log from Supabase meal_logs table."""
     try:
-        if os.path.exists(meal_log_file):
-            with open(meal_log_file, "r") as f:
-                data = json.load(f)
-                for meal in data:
-                    meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
-                return data
-        return []
+        response = supabase.table("meal_logs").select("*").eq("user_email", email).order("timestamp", desc=True).execute()
+        meal_logs = response.data or []
+        for meal in meal_logs:
+            meal['timestamp'] = pd.to_datetime(meal['timestamp']).tz_convert(IST)
+        return meal_logs
     except Exception as e:
         st.error(f"Failed to load meal log: {e}")
         return []
@@ -223,21 +219,22 @@ def app():
         elif selected_food:
             best_match = food_df[food_df['food'] == selected_food].iloc[0]
             calories = best_match["calories"] * (total_quantity / 100)
-            st.session_state[f"meal_log_{email}"].append({
+            meal = {
                 "timestamp": datetime.now(IST),
                 "meal_time": meal_time,
                 "food": best_match["food"],
                 "quantity": total_quantity,
                 "calories": round(calories, 2),
                 "source": "dataset"
-            })
-            save_meal_log(st.session_state[f"meal_log_{email}"], email)
+            }
+            st.session_state[f"meal_log_{email}"].append(meal)
+            save_meal_log(meal, email)
             st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
         else:
             cal, carbs, protein, fat = fetch_nutritional_info(typed_food)
             if cal and carbs is not None:
                 total_calories = cal * (total_quantity / 100)
-                st.session_state[f"meal_log_{email}"].append({
+                meal = {
                     "timestamp": datetime.now(IST),
                     "meal_time": meal_time,
                     "food": typed_food,
@@ -247,8 +244,9 @@ def app():
                     "protein": round(protein * (total_quantity / 100), 2),
                     "fat": round(fat * (total_quantity / 100), 2),
                     "source": "API"
-                })
-                save_meal_log(st.session_state[f"meal_log_{email}"], email)
+                }
+                st.session_state[f"meal_log_{email}"].append(meal)
+                save_meal_log(meal, email)
                 st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
@@ -257,7 +255,7 @@ def app():
                 protein_input = st.number_input("Protein per 100g", min_value=0.0, key="manual_protein")
                 fat_input = st.number_input("Fat per 100g", min_value=0.0, key="manual_fat")
                 if calories_input > 0:
-                    st.session_state[f"meal_log_{email}"].append({
+                    meal = {
                         "timestamp": datetime.now(IST),
                         "meal_time": meal_time,
                         "food": typed_food,
@@ -267,22 +265,27 @@ def app():
                         "protein": round(protein_input * (total_quantity / 100), 2),
                         "fat": round(fat_input * (total_quantity / 100), 2),
                         "source": "manual"
-                    })
-                    save_meal_log(st.session_state[f"meal_log_{email}"], email)
+                    }
+                    st.session_state[f"meal_log_{email}"].append(meal)
+                    save_meal_log(meal, email)
                     st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
                 else:
                     st.info("Enter calories to log manually.")
 
     if st.button("Clear All Logged Meals"):
-        st.session_state[f"meal_log_{email}"] = []
-        save_meal_log(st.session_state[f"meal_log_{email}"], email)
-        st.success("All logged meals cleared.")
+        try:
+            supabase.table("meal_logs").delete().eq("user_email", email).execute()
+            st.session_state[f"meal_log_{email}"] = []
+            st.success("All logged meals cleared.")
+        except Exception as e:
+            st.error(f"Failed to clear meals: {str(e)}")
 
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
 
-    if st.session_state[f"meal_log_{email}"]:
-        df = pd.DataFrame(st.session_state[f"meal_log_{email}"])
+    meal_log = load_meal_log(email)  # Load from Supabase
+    if meal_log:
+        df = pd.DataFrame(meal_log)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_selected_date = df[df['timestamp'].dt.date == selected_date]
 
@@ -295,16 +298,17 @@ def app():
         st.info("No meals logged yet.")
 
     st.markdown("### 📊 Daily Summary")
-    if st.session_state[f"meal_log_{email}"]:
-        df = pd.DataFrame(st.session_state[f"meal_log_{email}"])
+    meal_log = st.session_state[f"meal_log_{email}"]
+    if meal_log:
+        df = pd.DataFrame(meal_log)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_today = df[df['timestamp'].dt.date == date.today()]
 
         if df_today.empty:
             st.info("No meals logged for today.")
         else:
-            st.subheader("Today's Logged Meals")
-            for i, row in df_today.sort_values("timestamp", ascending=False).iterrows():
+            st.subheader("Today's Meals")
+            for i, row in enumerate(df_today.sort_values("timestamp", ascending=False).to_dict('records')):
                 cols = st.columns([2, 2, 2, 2, 1])
                 with cols[0]:
                     st.write(row["timestamp"].strftime("%Y-%m-%d %H:%M:%S"))
@@ -315,18 +319,21 @@ def app():
                 with cols[3]:
                     st.write(f"{row['quantity']}g, {row['calories']} kcal")
                 with cols[4]:
-                    if st.button("Clear This", key=f"clear_{i}"):
-                        st.session_state[f"meal_log_{email}"] = [meal for j, meal in enumerate(st.session_state[f"meal_log_{email}"]) if j != i]
-                        save_meal_log(st.session_state[f"meal_log_{email}"], email)
-                        st.success(f"Removed {row['food']} from log.")
-                        st.rerun()
+                    if st.button("Clear", key=f"clear_{i}"):
+                        try:
+                            supabase.table("meal_logs").delete().eq("user_email", email).eq("timestamp", row["timestamp"].isoformat()).execute()
+                            st.session_state[f"meal_log_{email}"] = [meal for meal in st.session_state[f"meal_log_{email}"] if meal['timestamp'] != row["timestamp"]]
+                            st.success(f"Removed {row['food']} from log.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to delete meal: {e}")
 
             total_calories = df_today["calories"].sum()
             total_carbs = df_today["carbs"].sum() if "carbs" in df_today.columns else 0
             total_protein = df_today["protein"].sum() if "protein" in df_today.columns else 0
             total_fat = df_today["fat"].sum() if "fat" in df_today.columns else 0
 
-            col1, col2, col3 = st.columns([3, 1, 1])
+            col1, col2 = st.columns([2, 3])
             with col1:
                 st.markdown(
                     f"<h3 style='color: {'green' if total_calories <= st.session_state.daily_goal else 'red'};'>Calories Consumed: {total_calories:.2f} kcal</h3>", 
@@ -336,7 +343,6 @@ def app():
                 st.progress(progress)
             with col2:
                 st.metric("Daily Calorie Goal", f"{st.session_state.daily_goal} kcal")
-            with col3:
                 st.metric("Remaining Calories", f"{max(st.session_state.daily_goal - total_calories, 0):.2f} kcal")
 
             nutrients = {
@@ -344,7 +350,7 @@ def app():
                 "Proteins": total_protein,
                 "Fats": total_fat,
             }
-            nutrients = {k: v for k, v in nutrients.items() if v and not pd.isna(v)}
+            nutrients = {k: v for k, v in nutrients.items() if v and not np.isnan(v)}
 
             if nutrients:
                 fig, ax = plt.subplots()
@@ -362,12 +368,12 @@ def app():
 
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
-            fig2, ax2 = plt.subplots()
-            ax2.bar(calories_mealtime.index, calories_mealtime.values, color='#4a90e2')
-            ax2.set_ylabel("Calories (kcal)")
-            ax2.set_xlabel("Meal Time")
-            ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state.daily_goal * 0.3))
-            st.pyplot(fig2)
+            fig, ax = plt.subplots()
+            ax.bar(calories_mealtime.index, calories_mealtime.values, color='#4a90e2')
+            ax.set_ylabel("Calories (kcal)")
+            ax.set_xlabel("Meal Time")
+            ax.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state.daily_goal * 0.3))
+            st.pyplot(fig)
 
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
             today = date.today()
@@ -375,24 +381,24 @@ def app():
             df['date_only'] = df['timestamp'].dt.date
             weekly_calories = df.groupby('date_only')['calories'].sum().reindex(past_week, fill_value=0)
 
-            fig3, ax3 = plt.subplots()
-            ax3.plot(past_week, weekly_calories.values, marker='o', linestyle='-', color='#ff7f0e')
-            ax3.set_title("Calories Consumed Over Past 7 Days")
-            ax3.set_ylabel("Calories (kcal)")
-            ax3.set_xlabel("Date")
-            ax3.set_xticks(past_week)
-            ax3.set_xticklabels([d.strftime("%a %d") for d in past_week], rotation=45)
-            ax3.axhline(st.session_state.daily_goal, color='green', linestyle='--', label='Daily Goal')
-            ax3.legend()
-            st.pyplot(fig3)
+            fig, ax = plt.subplots()
+            ax.plot(past_week, weekly_calories.values, marker='o', linestyle='-', color='#ff7f0e')
+            ax.set_title("Calories Consumed Over Past 7 Days")
+            ax.set_ylabel("Calories (kcal)")
+            ax.set_xlabel("Date")
+            ax.set_xticks(past_week)
+            ax.set_xticklabels([d.strftime("%a %d") for d in range past_week], rotation=45)
+            ax.axhline(y=st.session_state.daily_goal, color='green', linestyle='--', label='Daily Goal')
+            ax.legend()
+            st.pyplot(fig)
 
-            if st.button("Download Daily Report PDF"):
+            if st.button("Download PDF Report"):
                 pdf_bytes = generate_pdf_report(df_today.to_dict('records'), st.session_state.daily_goal)
                 st.download_button(
                     label="Download PDF",
                     data=pdf_bytes,
                     file_name=f"diet_report_{date.today()}.pdf",
-                    mime="application/pdf"
+                    mime="text/plain"
                 )
     else:
         st.info("No meals logged yet today.")
