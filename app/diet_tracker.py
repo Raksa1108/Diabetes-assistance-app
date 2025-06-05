@@ -9,6 +9,7 @@ from io import BytesIO
 import json
 import os
 from data.base import st_style, head
+from supabase_client import supabase  # Import supabase client
 
 # Timezone import for IST
 try:
@@ -100,22 +101,27 @@ def generate_pdf_report(meal_log, daily_goal):
     pdf_output.seek(0)
     return pdf_output
 
-def save_meal_log(meal_log):
-    """Save meal log to a JSON file for persistence."""
-    with open("meal_log.json", "w") as f:
-        # Convert datetime to string for JSON serialization
-        serializable_log = []
-        for meal in meal_log:
-            meal_copy = meal.copy()
-            meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
-            serializable_log.append(meal_copy)
-        json.dump(serializable_log, f)
-
-def load_meal_log():
-    """Load meal log from a JSON file."""
+def save_meal_log(meal_log, email):
+    """Save meal log to a user-specific JSON file for persistence."""
+    meal_log_file = f"data/meal_log_{email.replace('@', '_').replace('.', '_')}.json"
     try:
-        if os.path.exists("meal_log.json"):
-            with open("meal_log.json", "r") as f:
+        with open(meal_log_file, "w") as f:
+            # Convert datetime to string for JSON serialization
+            serializable_log = []
+            for meal in meal_log:
+                meal_copy = meal.copy()
+                meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
+                serializable_log.append(meal_copy)
+            json.dump(serializable_log, f)
+    except Exception as e:
+        st.error(f"Failed to save meal log: {e}")
+
+def load_meal_log(email):
+    """Load meal log from a user-specific JSON file."""
+    meal_log_file = f"data/meal_log_{email.replace('@', '_').replace('.', '_')}.json"
+    try:
+        if os.path.exists(meal_log_file):
+            with open(meal_log_file, "r") as f:
                 data = json.load(f)
                 # Convert timestamp strings back to datetime
                 for meal in data:
@@ -126,23 +132,54 @@ def load_meal_log():
         st.error(f"Failed to load meal log: {e}")
         return []
 
+def get_user_by_email(email):
+    """Fetch user data from Supabase."""
+    response = supabase.table("users").select("*").eq("email", email).execute()
+    return response.data[0] if response.data else None
+
+def save_daily_goal(email, daily_goal):
+    """Save daily calorie goal to Supabase."""
+    try:
+        supabase.table("users").update({"daily_goal": daily_goal}).eq("email", email).execute()
+    except Exception as e:
+        st.error(f"Failed to save daily goal: {e}")
+
 def app():
+    # Get current user's email
+    user = st.session_state.get('current_user')
+    if not user or not user.get('email'):
+        st.error("User not logged in. Please log in to use the Diet Tracker.")
+        return
+    email = user['email']
+    
+    # Fetch user data from Supabase
+    user_data = get_user_by_email(email)
+    if not user_data:
+        st.error("User data not found in database. Please contact support.")
+        return
+
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
     food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
 
+    # Initialize session state for daily goal and meal log
     if 'daily_goal' not in st.session_state:
-        st.session_state.daily_goal = 2000
+        # Load from Supabase or default to 2000
+        st.session_state.daily_goal = user_data.get('daily_goal', 2000)
     if 'meal_log' not in st.session_state:
-        st.session_state.meal_log = load_meal_log()
+        st.session_state.meal_log = load_meal_log(email)
 
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
 
     st.title("🥗 Diet Tracker for Diabetes")
     st.sidebar.subheader("🔧 Settings")
-    st.session_state.daily_goal = st.sidebar.number_input(
+    new_daily_goal = st.sidebar.number_input(
         "Set Daily Calorie Goal", min_value=800, max_value=4000, value=st.session_state.daily_goal, step=50
     )
+    # Update daily goal in session state and Supabase if changed
+    if new_daily_goal != st.session_state.daily_goal:
+        st.session_state.daily_goal = new_daily_goal
+        save_daily_goal(email, new_daily_goal)
 
     st.subheader("🍱 Add Your Meal")
 
@@ -200,7 +237,7 @@ def app():
                 "calories": round(calories, 2),
                 "source": "dataset"
             })
-            save_meal_log(st.session_state.meal_log)
+            save_meal_log(st.session_state.meal_log, email)
             st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
         else:
             cal, carbs, protein, fat = fetch_nutritional_info(typed_food)
@@ -217,7 +254,7 @@ def app():
                     "fat": round(fat * (total_quantity / 100), 2),
                     "source": "API"
                 })
-                save_meal_log(st.session_state.meal_log)
+                save_meal_log(st.session_state.meal_log, email)
                 st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
@@ -237,14 +274,14 @@ def app():
                         "fat": round(fat_input * (total_quantity / 100), 2),
                         "source": "manual"
                     })
-                    save_meal_log(st.session_state.meal_log)
+                    save_meal_log(st.session_state.meal_log, email)
                     st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
                 else:
                     st.info("Enter calories to log manually.")
 
     if st.button("Clear All Logged Meals"):
         st.session_state.meal_log = []
-        save_meal_log(st.session_state.meal_log)
+        save_meal_log(st.session_state.meal_log, email)
         st.success("All logged meals cleared.")
 
     st.markdown("### 📅 Calendar View")
@@ -287,9 +324,9 @@ def app():
                 with cols[4]:
                     if st.button("Clear This", key=f"clear_{i}"):
                         st.session_state.meal_log = [meal for j, meal in enumerate(st.session_state.meal_log) if j != i]
-                        save_meal_log(st.session_state.meal_log)
+                        save_meal_log(st.session_state.meal_log, email)
                         st.success(f"Removed {row['food']} from log.")
-                        st.experimental_rerun()
+                        st.rerun()  # Updated from st.experimental_rerun()
 
             total_calories = df_today["calories"].sum()
             total_carbs = df_today["carbs"].sum() if "carbs" in df_today.columns else 0
