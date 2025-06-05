@@ -7,7 +7,6 @@ from supabase_client import supabase
 from zoneinfo import ZoneInfo
 
 # Constants
-HISTORY_FILE = "data/prediction_history.csv"
 IST = ZoneInfo("Asia/Kolkata")
 
 # Security questions from main.py
@@ -31,6 +30,16 @@ def get_user_by_email(email):
 def history_section():
     st.markdown("### 🕓 Prediction History")
     st.markdown("View and manage all your past prediction records.")
+
+    # Get current user's email for user-specific history file
+    user = st.session_state['current_user']
+    email = user.get('email')
+    if not email:
+        st.error("User email not found. Please log in again.")
+        return
+    
+    # Use user-specific history file
+    HISTORY_FILE = f"data/prediction_history_{email.replace('@', '_').replace('.', '_')}.csv"
 
     if os.path.exists(HISTORY_FILE):
         try:
