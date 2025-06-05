@@ -87,10 +87,16 @@ def generate_pdf_report(meal_log, daily_goal):
     pdf.cell(0, 10, "Logged Meals:", ln=True)
     pdf.set_font("Arial", size=10)
     for meal in meal_log:
-        pdf.cell(0, 8, f"{meal['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal", ln=True)
+        meal_text = f"{meal['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal"
+        # Ensure text is encoded properly to handle special characters
+        try:
+            pdf.cell(0, 8, meal_text, ln=True)
+        except UnicodeEncodeError:
+            # Fallback for non-Latin characters
+            pdf.cell(0, 8, meal_text.encode('latin-1', 'replace').decode('latin-1'), ln=True)
 
     pdf_output = BytesIO()
-    pdf.output(pdf_output)
+    pdf_output.write(pdf.output(dest='S').encode('latin-1'))  # Use dest='S' to get string output, encode for BytesIO
     pdf_output.seek(0)
     return pdf_output
 
