@@ -204,8 +204,8 @@ def show_app_nav():
         "SHAP WATERFALL",
         "DIET TRACKER",
         "PERFORMANCE",
-        "HISTORY",
         "ASK AI",
+        "SETTINGS",
         "ABOUT DIABETES",
     ])
 
@@ -227,7 +227,7 @@ def show_app_nav():
         diet_tracker.app()
     elif app_mode == "PERFORMANCE":
         performance.app()
-    elif app_mode == "HISTORY":
+    elif app_mode == "SETTINGS":
         history.app()
     elif app_mode == "ABOUT DIABETES":
         about_diabetes.app()
