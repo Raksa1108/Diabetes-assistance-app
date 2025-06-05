@@ -1,15 +1,12 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime
 from data.base import st_style, head
 from supabase_client import supabase
 from zoneinfo import ZoneInfo
 
-# Constants
 IST = ZoneInfo("Asia/Kolkata")
 
-# Security questions from main.py
 SECURITY_QUESTIONS = [
     "What was your childhood nickname?",
     "In what city did you meet your spouse?",
@@ -31,61 +28,37 @@ def history_section():
     st.markdown("### 🕓 Prediction History")
     st.markdown("View and manage all your past prediction records.")
 
-    # Get current user's email for user-specific history file
     user = st.session_state.get('current_user')
     if not user or not user.get('email'):
         st.error("User email not found. Please log in again.")
         return
     
     email = user['email']
-    # Ensure the data directory exists
-    data_dir = "data"
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
-    
-    # Use user-specific history file
-    HISTORY_FILE = os.path.join(data_dir, f"prediction_history_{email.replace('@', '_').replace('.', '_')}.csv")
 
-    if os.path.exists(HISTORY_FILE):
-        try:
-            history_df = pd.read_csv(HISTORY_FILE)
-            
-            if not history_df.empty:
-                # Handle timestamp conversion safely
-                if 'Timestamp' in history_df.columns:
-                    try:
-                        history_df['Timestamp'] = pd.to_datetime(history_df['Timestamp'], errors='coerce')
-                        if history_df['Timestamp'].dt.tz is None:
-                            history_df['Timestamp'] = history_df['Timestamp'].dt.tz_localize('UTC').dt.tz_convert(IST)
-                        else:
-                            history_df['Timestamp'] = history_df['Timestamp'].dt.tz_convert(IST)
-                    except Exception as e:
-                        st.warning(f"Could not process timestamps: {str(e)}. Displaying raw timestamps.")
-                st.dataframe(history_df, use_container_width=True)
+    try:
+        response = supabase.table("predictions").select("*").eq("user_email", email).order("timestamp", desc=True).execute()
+        history_data = response.data
+        if history_data:
+            history_df = pd.DataFrame(history_data)
+            history_df['timestamp'] = pd.to_datetime(history_df['timestamp']).dt.tz_convert(IST)
+            st.dataframe(history_df[['timestamp', 'pregnancies', 'glucose', 'blood_pressure', 'skin_thickness', 'insulin', 'bmi', 'diabetes_pedigree_function', 'age', 'risk_percent', 'prediction']], use_container_width=True)
 
-                # Download as CSV
-                csv = history_df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Download History as CSV",
-                    data=csv,
-                    file_name="prediction_history.csv",
-                    mime="text/csv"
-                )
+            csv = history_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download History as CSV",
+                data=csv,
+                file_name="prediction_history.csv",
+                mime="text/csv"
+            )
 
-                # Clear history
-                if st.button("🗑️ Clear History"):
-                    try:
-                        os.remove(HISTORY_FILE)
-                        st.success("✅ Prediction history cleared successfully.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Failed to clear history file: {str(e)}")
-            else:
-                st.info("History file exists but has no records.")
-        except Exception as e:
-            st.error(f"Failed to load history file: {str(e)}. Please ensure the file is accessible.")
-    else:
-        st.info("No prediction history found yet. Make a prediction to start building history.")
+            if st.button("🗑️ Clear History"):
+                supabase.table("predictions").delete().eq("user_email", email).execute()
+                st.success("✅ Prediction history cleared successfully.")
+                st.rerun()
+        else:
+            st.info("No prediction history found yet. Make a prediction to start building history.")
+    except Exception as e:
+        st.error(f"Failed to load history: {str(e)}")
 
 def profile_section():
     st.markdown("### 👤 User Profile")
@@ -102,7 +75,6 @@ def profile_section():
         st.error("User data not found in database. Please contact support.")
         return
 
-    # Initialize session state for profile fields with defaults
     if 'profile_edit_mode' not in st.session_state:
         st.session_state['profile_edit_mode'] = False
     if 'profile_name' not in st.session_state:
@@ -137,14 +109,20 @@ def profile_section():
         with col1:
             if st.button("Save Changes", key="save_profile"):
                 try:
-                    update_data = {"name": st.session_state['profile_name']}
+                    update_data = {
+                        "name": st.session_state['profile_name'],
+                        "age": st.session_state['profile_age'],
+                        "height": st.session_state['profile_height'],
+                        "weight": st.session_state['profile_weight'],
+                        "username": st.session_state['profile_username']
+                    }
                     supabase.table("users").update(update_data).eq("email", email).execute()
                     st.session_state['current_user'] = get_user_by_email(email)
                     st.session_state['profile_edit_mode'] = False
                     st.success("Profile updated successfully!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Failed to update profile: {str(e)}. Please ensure the database schema includes required fields.")
+                    st.error(f"Failed to update profile: {str(e)}")
         with col2:
             if st.button("Cancel", key="cancel_profile"):
                 st.session_state['profile_edit_mode'] = False
