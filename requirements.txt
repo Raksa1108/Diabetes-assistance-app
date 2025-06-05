@@ -10,3 +10,6 @@ joblib
 google-generativeai==0.4.1
 fpdf
 supabase
+requests
+pytz
+python-dotenv
