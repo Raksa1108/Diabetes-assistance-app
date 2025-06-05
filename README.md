@@ -18,7 +18,6 @@ Get the app here: [App Link](https://diabetes-assistance-app-fa8txahetsbfhahxcsq
 
 ## Screenshots
 
-## Screenshots
 
 ![Screenshot 2025-06-05 212321](https://github.com/user-attachments/assets/e1020660-cfd2-40eb-8498-92b849dd7aac)
 ![Screenshot 2025-06-05 212313](https://github.com/user-attachments/assets/c99edf6c-378a-4121-8abb-7d3215fa252e)
@@ -30,6 +29,5 @@ Get the app here: [App Link](https://diabetes-assistance-app-fa8txahetsbfhahxcsq
 
 This project is open-source and welcomes contributions from the community. Whether you are a developer, designer, or healthcare professional, your feedback and input are valuable!
 
----
 
 **Keywords:** diabetes app, diabetes management, health tracker, mobile app, blood sugar, healthcare, open source
