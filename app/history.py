@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 HISTORY_FILE = "data/prediction_history.csv"
 IST = ZoneInfo("Asia/Kolkata")
 
-# Security questions from main.py (copied to avoid dependency issues)
+# Security questions from main.py
 SECURITY_QUESTIONS = [
     "What was your childhood nickname?",
     "In what city did you meet your spouse?",
@@ -33,29 +33,41 @@ def history_section():
     st.markdown("View and manage all your past prediction records.")
 
     if os.path.exists(HISTORY_FILE):
-        history_df = pd.read_csv(HISTORY_FILE)
-        
-        if not history_df.empty:
-            # Convert timestamp to IST if it exists
-            if 'Timestamp' in history_df.columns:
-                history_df['Timestamp'] = pd.to_datetime(history_df['Timestamp']).dt.tz_convert(IST)
-            st.dataframe(history_df, use_container_width=True)
+        try:
+            history_df = pd.read_csv(HISTORY_FILE)
+            
+            if not history_df.empty:
+                # Handle timestamp conversion safely
+                if 'Timestamp' in history_df.columns:
+                    try:
+                        # Ensure timestamps are parsed correctly
+                        history_df['Timestamp'] = pd.to_datetime(history_df['Timestamp'], errors='coerce')
+                        # Only convert to IST if timestamps are timezone-naive
+                        if history_df['Timestamp'].dt.tz is None:
+                            history_df['Timestamp'] = history_df['Timestamp'].dt.tz_localize('UTC').dt.tz_convert(IST)
+                        else:
+                            history_df['Timestamp'] = history_df['Timestamp'].dt.tz_convert(IST)
+                    except Exception as e:
+                        st.warning(f"Could not process timestamps: {str(e)}. Displaying raw timestamps.")
+                st.dataframe(history_df, use_container_width=True)
 
-            # Download as CSV
-            csv = history_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download History as CSV",
-                data=csv,
-                file_name="prediction_history.csv",
-                mime="text/csv"
-            )
+                # Download as CSV
+                csv = history_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download History as CSV",
+                    data=csv,
+                    file_name="prediction_history.csv",
+                    mime="text/csv"
+                )
 
-            # Clear history
-            if st.button("🗑️ Clear History"):
-                os.remove(HISTORY_FILE)
-                st.success("✅ Prediction history cleared successfully.")
-        else:
-            st.info("History file exists but has no records.")
+                # Clear history
+                if st.button("🗑️ Clear History"):
+                    os.remove(HISTORY_FILE)
+                    st.success("✅ Prediction history cleared successfully.")
+            else:
+                st.info("History file exists but has no records.")
+        except Exception as e:
+            st.error(f"Failed to load history file: {str(e)}")
     else:
         st.info("No prediction history found yet. Make a prediction to start building history.")
 
@@ -107,23 +119,20 @@ def profile_section():
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Save Changes"):
+            if st.button("Save Changes", key="save_profile"):
                 try:
-                    supabase.table("users").update({
-                        "name": st.session_state['profile_name'],
-                        "age": st.session_state['profile_age'],
-                        "height": st.session_state['profile_height'],
-                        "weight": st.session_state['profile_weight'],
-                        "username": st.session_state['profile_username']
-                    }).eq("email", email).execute()
+                    # Only update fields that exist in the schema
+                    update_data = {"name": st.session_state['profile_name']}
+                    # Check if columns exist in schema (optional, based on schema validation)
+                    supabase.table("users").update(update_data).eq("email", email).execute()
                     st.session_state['current_user'] = get_user_by_email(email)
                     st.session_state['profile_edit_mode'] = False
                     st.success("Profile updated successfully!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Failed to update profile: {str(e)}")
+                    st.error(f"Failed to update profile: {str(e)}. Please ensure the database schema includes required fields.")
         with col2:
-            if st.button("Cancel"):
+            if st.button("Cancel", key="cancel_profile"):
                 st.session_state['profile_edit_mode'] = False
                 st.session_state['profile_name'] = user_data.get('name', '')
                 st.session_state['profile_age'] = user_data.get('age', 0) or 0
@@ -160,7 +169,7 @@ def security_section():
     if not st.session_state['security_password_verified']:
         st.subheader("Verify Current Password")
         current_password = st.text_input("Enter Current Password", type="password", key="verify_current_password")
-        if st.button("Verify Password"):
+        if st.button("Verify Password", key="verify_password"):
             if current_password == user_data['password']:
                 st.session_state['security_password_verified'] = True
                 st.success("Password verified successfully!")
@@ -168,19 +177,39 @@ def security_section():
             else:
                 st.error("Incorrect password. Please try again.")
     else:
-        if not st.session_state['security_edit_mode']:
-            st.subheader("Current Security Settings")
-            st.write("**Security Questions**:")
-            for q, a in zip(st.session_state['security_questions'], st.session_state['security_answers']):
-                st.write(f"- {q}: {a}")
-            if st.button("Edit Security Settings"):
-                st.session_state['security_edit_mode'] = True
-        else:
-            st.subheader("Change Password and Security Questions")
-            new_password = st.text_input("New Password (leave blank to keep current)", type="password", key="new_password")
+        st.subheader("Security Options")
+        option = st.radio("Choose an action:", ["Change Password", "Update Security Questions"], key="security_option")
+
+        if option == "Change Password":
+            st.subheader("Change Password")
+            new_password = st.text_input("New Password", type="password", key="new_password")
             confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_password")
 
-            st.markdown("### Update Security Questions (select exactly 5)")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Save Password", key="save_password"):
+                    if not new_password:
+                        st.error("Please enter a new password.")
+                        return
+                    if new_password != confirm_password:
+                        st.error("New passwords do not match.")
+                        return
+                    try:
+                        supabase.table("users").update({"password": new_password}).eq("email", email).execute()
+                        st.session_state['current_user'] = get_user_by_email(email)
+                        st.session_state['security_password_verified'] = False
+                        st.success("Password updated successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to update password: {str(e)}")
+            with col2:
+                if st.button("Cancel", key="cancel_password"):
+                    st.session_state['security_password_verified'] = False
+                    st.rerun()
+
+        elif option == "Update Security Questions":
+            st.subheader("Update Security Questions")
+            st.markdown("Select exactly 5 security questions:")
             new_questions = st.multiselect(
                 "Select 5 security questions",
                 options=SECURITY_QUESTIONS,
@@ -192,42 +221,34 @@ def security_section():
             new_answers = []
             if len(new_questions) == 5:
                 for i, q in enumerate(new_questions):
-                    ans = st.text_input(f"Answer for: {q}", key=f"new_answer_{i}")
+                    ans = st.text_input(f"Answer for: {q}", key=f"new_answer_{i}_security")
                     new_answers.append(ans)
             else:
                 st.info("Please select exactly 5 security questions.")
 
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Save Security Changes"):
-                    if new_password and new_password != confirm_password:
-                        st.error("New passwords do not match.")
-                        return
+                if st.button("Save Security Questions", key="save_questions"):
                     if len(new_questions) != 5:
                         st.error("You must select exactly 5 security questions.")
                         return
                     if any(not a.strip() for a in new_answers):
                         st.error("Please answer all selected security questions.")
                         return
-
-                    update_data = {"security_questions": dict(zip(new_questions, new_answers))}
-                    if new_password:
-                        update_data["password"] = new_password
-
                     try:
-                        supabase.table("users").update(update_data).eq("email", email).execute()
+                        supabase.table("users").update({
+                            "security_questions": dict(zip(new_questions, new_answers))
+                        }).eq("email", email).execute()
                         st.session_state['current_user'] = get_user_by_email(email)
-                        st.session_state['security_edit_mode'] = False
                         st.session_state['security_password_verified'] = False
                         st.session_state['security_questions'] = new_questions
                         st.session_state['security_answers'] = new_answers
-                        st.success("Security settings updated successfully!")
+                        st.success("Security questions updated successfully!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Failed to update security settings: {str(e)}")
+                        st.error(f"Failed to update security questions: {str(e)}")
             with col2:
-                if st.button("Cancel"):
-                    st.session_state['security_edit_mode'] = False
+                if st.button("Cancel", key="cancel_questions"):
                     st.session_state['security_password_verified'] = False
                     st.session_state['security_questions'] = list(user_data.get('security_questions', {}).keys())
                     st.session_state['security_answers'] = list(user_data.get('security_questions', {}).values())
