@@ -54,17 +54,17 @@ def merge_datasets(*datasets):
 
 def fetch_nutritional_info(food_name):
     api_key = "iBOUPzaCXlEy5E4Z4qz758aWgVQobfE6ck2kSXIw"
-    url = f"https://api.nal.usda.gov/fdc/v1/foods/search?query={food_name}&apiKey={api_key}"
+    url = f"https://api.nal.usda.gov/fdc/v1/foods/search?query={food_name}&api_key={api_key}"
     try:
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            if data['foods']:
-                nutrients = data['foods'][0]['foodNutrients']
-                calories = next((item['value'] for item in nutrients if item['nutrientName'] == 'Energy'), None)
-                carbs = next((item['value'] for item in nutrients if item['nutrientName'] == 'Carbohydrate, by difference'), None)
-                protein = next((item['value'] for item in nutrients if item['nutrientName'] == 'Protein'), 0)
-                fat = next((item['value'] for item in nutrients if item['nutrientName'] == 'Total lipid (fat)'), 0)
+            if data.get('foods'):
+                nutrients = data['foods'][0].get('foodNutrients', [])
+                calories = next((item['value'] for item in nutrients if item.get('nutrientName') == 'Energy'), None)
+                carbs = next((item['value'] for item in nutrients if item.get('nutrientName') == 'Carbohydrate, by difference'), None)
+                protein = next((item['value'] for item in nutrients if item.get('nutrientName') == 'Protein'), 0)
+                fat = next((item['value'] for item in nutrients if item.get('nutrientName') == 'Total lipid (fat)'), 0)
                 return calories, carbs, protein, fat
     except Exception:
         return None, None, None, None
@@ -90,7 +90,7 @@ def generate_pdf_report(meal_log, daily_goal):
         pdf.cell(0, 8, f"{meal['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal", ln=True)
 
     pdf_output = BytesIO()
-    pdf_output.write(pdf.output(dest='S').encode('latin1'))
+    pdf.output(pdf_output)
     pdf_output.seek(0)
     return pdf_output
 
@@ -167,8 +167,9 @@ def app():
     col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
         selected_serving = st.selectbox("Select Serving Size", list(serving_sizes.keys()))
-    with col2 "Custom (grams)":
-            quantity_per_piece = st.number_input("Quantity per piece (in grams)", min_value=1, max_value=1000, step=1)
+    with col2:
+        if selected_serving == "Custom (grams)":
+            quantity_per_piece = st.number_input("Quantity per piece (in grams)", min_value=1, max_value=1000, step=1, value=100)
         else:
             quantity_per_piece = serving_sizes[selected_serving]
             st.write(f"Equivalent to {quantity_per_piece} grams per piece")
@@ -183,7 +184,10 @@ def app():
         if not typed_food:
             st.error("Please type a food name to log.")
         elif selected_food:
-            best_match = food_df[food_df['food'] == selected_food].iloc "timestamp": datetime.now(IST),
+            best_match = food_df[food_df['food'] == selected_food].iloc[0]
+            calories = best_match["calories"] * (total_quantity / 100)
+            st.session_state.meal_log.append({
+                "timestamp": datetime.now(IST),
                 "meal_time": meal_time,
                 "food": best_match["food"],
                 "quantity": total_quantity,
@@ -342,6 +346,7 @@ def app():
             ax3.set_title("Calories Consumed Over Past 7 Days")
             ax3.set_ylabel("Calories (kcal)")
             ax3.set_xlabel("Date")
+            ax3.set_xticks(past_week)
             ax3.set_xticklabels([d.strftime("%a %d") for d in past_week], rotation=45)
             ax3.axhline(st.session_state.daily_goal, color='green', linestyle='--', label='Daily Goal')
             ax3.legend()
