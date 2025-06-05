@@ -9,7 +9,6 @@ from io import BytesIO
 from data.base import st_style, head
 from supabase_client import supabase
 
-# Timezone import for IST
 try:
     from zoneinfo import ZoneInfo
     IST = ZoneInfo("Asia/Kolkata")
@@ -98,7 +97,6 @@ def generate_pdf_report(meal_log, daily_goal):
     return pdf_output
 
 def save_meal_log(meal, email):
-    """Save a single meal to Supabase meal_logs table."""
     try:
         supabase.table("meal_logs").insert({
             "user_email": email,
@@ -116,7 +114,6 @@ def save_meal_log(meal, email):
         st.error(f"Failed to save meal log: {e}")
 
 def load_meal_log(email):
-    """Load meal log from Supabase meal_logs table."""
     try:
         response = supabase.table("meal_logs").select("*").eq("user_email", email).order("timestamp", desc=True).execute()
         meal_logs = response.data or []
@@ -124,16 +121,14 @@ def load_meal_log(email):
             meal['timestamp'] = pd.to_datetime(meal['timestamp']).tz_convert(IST)
         return meal_logs
     except Exception as e:
-        st.error(f"Failed to load meal log: {e}")
+        st.error(f"Failed to load meal log: {str(e)}")
         return []
 
 def get_user_by_email(email):
-    """Fetch user data from Supabase."""
     response = supabase.table("users").select("*").eq("email", email).execute()
     return response.data[0] if response.data else None
 
 def save_daily_goal(email, daily_goal):
-    """Save daily calorie goal to Supabase."""
     try:
         supabase.table("users").update({"daily_goal": daily_goal}).eq("email", email).execute()
     except Exception as e:
@@ -146,6 +141,13 @@ def app():
         return
     email = user['email']
     
+    # Set current user email for RLS
+    try:
+        supabase.rpc('set_config', {'key': 'app.current_user_email', 'value': email}).execute()
+    except Exception as e:
+        st.error(f"Failed to set user email for RLS: {str(e)}")
+        return
+    
     user_data = get_user_by_email(email)
     if not user_data:
         st.error("User data not found in database. Please contact support.")
@@ -154,7 +156,6 @@ def app():
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
     food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
 
-    # Initialize session state for daily goal and meal log
     if 'daily_goal' not in st.session_state or f"meal_log_{email}" not in st.session_state:
         st.session_state.daily_goal = user_data.get('daily_goal', 2000)
         st.session_state[f"meal_log_{email}"] = load_meal_log(email)
