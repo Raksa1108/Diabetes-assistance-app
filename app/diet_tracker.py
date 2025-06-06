@@ -180,15 +180,12 @@ def generate_pdf_report(meal_log, daily_goal, user_email):
     return pdf_output
 
 def get_current_user():
-    """Get current user email from session state."""
-    # Check if user is logged in (this should be set by your main app login system)
-    if 'user_email' in st.session_state and st.session_state.user_email:
-        return st.session_state.user_email
-    else:
-        # If no user is found, show error and stop execution
-        st.error("⚠️ User not logged in. Please login to access the Diet Tracker.")
-        st.info("This feature requires user authentication. Please login through the main application.")
+    """Get current user email from session state (history.py style)."""
+    user = st.session_state.get('current_user')
+    if not user or not user.get('email'):
+        st.error("User email not found. Please log in again.")
         st.stop()
+    return user['email']
 
 def initialize_user_session(user_email):
     """Initialize session state for user-specific data."""
