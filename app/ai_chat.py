@@ -5,7 +5,7 @@ from data.base import st_style, head
 genai.configure(api_key=st.secrets["gemini"]["api_key"])
 
 # Use Gemini Pro model
-model = genai.GenerativeModel("models/gemini-1.5-pro-latest")
+model = genai.GenerativeModel("models/gemini-1.2-flash")
 
 def app():
     st.markdown(st_style, unsafe_allow_html=True)
