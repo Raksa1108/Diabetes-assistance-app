@@ -2,9 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from data.base import st_style, head
 genai.configure(api_key=st.secrets["gemini"]["api_key"])
-
-model = genai.GenerativeModel("models/gemini-2.0-flash")
-
+model = genai.GenerativeModel("gemini-2.0-flash")
 def app():
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
