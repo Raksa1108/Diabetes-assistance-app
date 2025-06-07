@@ -374,8 +374,7 @@ def app():
         else:
             st.subheader(f"Meals for {selected_date.strftime('%Y-%m-%d')}")
             st.dataframe(df_selected_date[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp", ascending=False))
-    else:
-        st.info("No meals logged yet.")
+
 
     st.markdown("### 📊 Daily Summary")
     if st.session_state[user_meal_log_key]:
@@ -453,8 +452,7 @@ def app():
                 )
                 ax.axis('equal')
                 st.pyplot(fig)
-            else:
-                st.info("No macronutrient data available to plot.")
+
 
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
