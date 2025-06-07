@@ -322,9 +322,9 @@ def app():
                     "source": "API"
                 })
                 save_meal_log(st.session_state[user_meal_log_key], current_user)
-                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
+                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal.")
             else:
-                st.warning("Food not found in database or API. Please enter nutrition manually.")
+                st.warning("Food not found in database. Please enter nutrition manually.")
                 calories_input = st.number_input("Calories per 100g", min_value=0.0, key="manual_cal")
                 carbs_input = st.number_input("Carbohydrates per 100g", min_value=0.0, key="manual_carb")
                 protein_input = st.number_input("Protein per 100g", min_value=0.0, key="manual_protein")
