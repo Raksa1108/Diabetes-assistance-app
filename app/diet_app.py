@@ -3,6 +3,7 @@ from app.diet_tracker import app as diet_tracker_app
 from app.nutrient_analysis import nutrition_analysis_app
 from app.history import supabase
 from zoneinfo import ZoneInfo
+import pandas as pd
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -30,7 +31,7 @@ def load_blood_sugar(user_email):
         st.error(f"Failed to load blood sugar data: {str(e)}")
         return []
 
-def main():
+def app():
     # Get current user
     if 'current_user' not in st.session_state or not st.session_state['current_user'].get('email'):
         st.error("User email not found. Please log in again.")
@@ -52,4 +53,4 @@ def main():
         nutrition_analysis_app(current_user, meal_log, blood_sugar_data)
 
 if __name__ == "__main__":
-    main()
+    app()
