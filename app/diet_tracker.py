@@ -266,13 +266,12 @@ def app():
             # Add "None" option to allow API usage
             options = ["None (Use API instead)"] + matched_list
             selected_food_option = st.selectbox("Select a matching food", options)
-            if selected_food_option == "None (Use API instead)":
+            if selected_food_option == "None":
                 selected_food = None
             else:
                 selected_food = selected_food_option
         else:
             selected_food = None
-            st.warning("No matches found in datasets.")
     else:
         matched_list = []
         selected_food = None
@@ -328,7 +327,7 @@ def app():
                     "source": "API"
                 })
                 save_meal_log(st.session_state[user_meal_log_key], current_user)
-                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
+                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal.")
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
                 calories_input = st.number_input("Calories per 100g", min_value=0.0, key="manual_cal")
@@ -363,20 +362,19 @@ def app():
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
         
-        # Convert timestamp to datetime with proper IST handling
+        # Convert timestamp to datetime
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
         
-        # Handle timezone conversion properly
+        # Handle timezone conversion properly - simplified approach
         if not df.empty:
-            # Check if timezone info exists
+            # Convert to IST timezone if not already
             if df['timestamp'].dt.tz is None:
-                # If no timezone, assume it's already in IST
-                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, errors='coerce')
+                # Assume local timezone is IST
+                df['timestamp'] = df['timestamp'].dt.tz_localize('UTC').dt.tz_convert(IST)
             else:
-                # Convert to IST
                 df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
         
-        # Create date column for filtering (in IST)
+        # Create date column for filtering (extract date from timestamp)
         df['meal_date'] = df['timestamp'].dt.date
         
         # Filter meals for selected date
@@ -411,16 +409,15 @@ def app():
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
         
-        # Convert timestamp to datetime with proper IST handling
+        # Convert timestamp to datetime
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
         
         # Handle timezone conversion properly
         if not df.empty:
             if df['timestamp'].dt.tz is None:
-                # If no timezone, assume it's already in IST
-                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, errors='coerce')
+                # Assume local timezone is IST
+                df['timestamp'] = df['timestamp'].dt.tz_localize('UTC').dt.tz_convert(IST)
             else:
-                # Convert to IST
                 df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
         
         # Get today's date in IST
@@ -501,7 +498,7 @@ def app():
             today = datetime.now(IST).date()
             past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]  # 7 days ascending
 
-            # Simplified date handling for weekly trend
+            # Create date column for grouping
             df['date_only'] = df['timestamp'].dt.date
 
             # Group by date_only and sum calories
