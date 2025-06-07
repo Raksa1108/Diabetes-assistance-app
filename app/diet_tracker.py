@@ -9,6 +9,7 @@ from io import BytesIO
 import json
 import os
 from data.base import st_style, head
+import hashlib
 
 # Timezone import for IST
 try:
@@ -70,14 +71,92 @@ def fetch_nutritional_info(food_name):
         return None, None, None, None
     return None, None, None, None
 
-def generate_pdf_report(meal_log, daily_goal):
+def get_user_filename(user_email):
+    """Generate a safe filename for user's meal log based on email."""
+    # Create a hash of the email for privacy and filename safety
+    email_hash = hashlib.md5(user_email.encode()).hexdigest()[:12]
+    return f"meal_log_{email_hash}.json"
+
+def get_user_goal_filename(user_email):
+    """Generate a safe filename for user's daily goal based on email."""
+    email_hash = hashlib.md5(user_email.encode()).hexdigest()[:12]
+    return f"daily_goal_{email_hash}.json"
+
+def save_meal_log(meal_log, user_email):
+    """Save meal log to a JSON file for persistence for specific user."""
+    filename = get_user_filename(user_email)
+    try:
+        # Create user_data directory if it doesn't exist
+        os.makedirs("user_data", exist_ok=True)
+        filepath = os.path.join("user_data", filename)
+        
+        with open(filepath, "w") as f:
+            # Convert datetime to string for JSON serialization
+            serializable_log = []
+            for meal in meal_log:
+                meal_copy = meal.copy()
+                meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
+                serializable_log.append(meal_copy)
+            json.dump(serializable_log, f)
+    except Exception as e:
+        st.error(f"Failed to save meal log: {e}")
+
+def load_meal_log(user_email):
+    """Load meal log from a JSON file for specific user."""
+    filename = get_user_filename(user_email)
+    filepath = os.path.join("user_data", filename)
+    
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, "r") as f:
+                data = json.load(f)
+                # Convert timestamp strings back to datetime
+                for meal in data:
+                    meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
+                return data
+        return []
+    except Exception as e:
+        st.error(f"Failed to load meal log: {e}")
+        return []
+
+def save_daily_goal(daily_goal, user_email):
+    """Save daily goal for specific user."""
+    filename = get_user_goal_filename(user_email)
+    try:
+        os.makedirs("user_data", exist_ok=True)
+        filepath = os.path.join("user_data", filename)
+        
+        with open(filepath, "w") as f:
+            json.dump({"daily_goal": daily_goal}, f)
+    except Exception as e:
+        st.error(f"Failed to save daily goal: {e}")
+
+def load_daily_goal(user_email):
+    """Load daily goal for specific user."""
+    filename = get_user_goal_filename(user_email)
+    filepath = os.path.join("user_data", filename)
+    
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, "r") as f:
+                data = json.load(f)
+                return data.get("daily_goal", 2000)
+        return 2000  # default goal
+    except Exception as e:
+        st.error(f"Failed to load daily goal: {e}")
+        return 2000
+
+def generate_pdf_report(meal_log, daily_goal, user_email):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=14)
     pdf.cell(0, 10, "Diet Tracker Daily Report", ln=True, align="C")
-
+    
     pdf.set_font("Arial", size=12)
-    pdf.ln(10)
+    pdf.ln(5)
+    pdf.cell(0, 10, f"User: {user_email}", ln=True)
+    pdf.ln(5)
+    
     total_calories = sum(item['calories'] for item in meal_log)
     pdf.cell(0, 10, f"Daily Calorie Goal: {daily_goal} kcal", ln=True)
     pdf.cell(0, 10, f"Calories Consumed: {total_calories:.2f} kcal", ln=True)
@@ -96,53 +175,69 @@ def generate_pdf_report(meal_log, daily_goal):
             pdf.cell(0, 8, meal_text.encode('latin-1', 'replace').decode('latin-1'), ln=True)
 
     pdf_output = BytesIO()
-    pdf_output.write(pdf.output(dest='S').encode('latin-1'))  # Use dest='S' to get string output, encode for BytesIO
+    pdf_output.write(pdf.output(dest='S').encode('latin-1'))
     pdf_output.seek(0)
     return pdf_output
 
-def save_meal_log(meal_log):
-    """Save meal log to a JSON file for persistence."""
-    with open("meal_log.json", "w") as f:
-        # Convert datetime to string for JSON serialization
-        serializable_log = []
-        for meal in meal_log:
-            meal_copy = meal.copy()
-            meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
-            serializable_log.append(meal_copy)
-        json.dump(serializable_log, f)
+def get_current_user():
+    """Get current user email from session state."""
+    # Check if user is logged in (this should be set by your main app login system)
+    if 'user_email' in st.session_state and st.session_state.user_email:
+        return st.session_state.user_email
+    else:
+        # If no user is found, show error and stop execution
+        st.error("⚠️ User not logged in. Please login to access the Diet Tracker.")
+        st.info("This feature requires user authentication. Please login through the main application.")
+        st.stop()
 
-def load_meal_log():
-    """Load meal log from a JSON file."""
-    try:
-        if os.path.exists("meal_log.json"):
-            with open("meal_log.json", "r") as f:
-                data = json.load(f)
-                # Convert timestamp strings back to datetime
-                for meal in data:
-                    meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
-                return data
-        return []
-    except Exception as e:
-        st.error(f"Failed to load meal log: {e}")
-        return []
+def initialize_user_session(user_email):
+    """Initialize session state for user-specific data."""
+    user_session_key = f"daily_goal_{user_email}"
+    meal_log_key = f"meal_log_{user_email}"
+    
+    if user_session_key not in st.session_state:
+        st.session_state[user_session_key] = load_daily_goal(user_email)
+    
+    if meal_log_key not in st.session_state:
+        st.session_state[meal_log_key] = load_meal_log(user_email)
 
 def app():
+    # Get current user
+    current_user = get_current_user()
+    
+    # Initialize user-specific session data
+    initialize_user_session(current_user)
+    
+    # Load datasets
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
     food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
 
-    if 'daily_goal' not in st.session_state:
-        st.session_state.daily_goal = 2000
-    if 'meal_log' not in st.session_state:
-        st.session_state.meal_log = load_meal_log()
+    # User-specific session keys
+    user_goal_key = f"daily_goal_{current_user}"
+    user_meal_log_key = f"meal_log_{current_user}"
 
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
 
     st.title("🥗 Diet Tracker for Diabetes")
+    
+    # Display current user info
+    st.sidebar.markdown(f"**👤 Logged in as:** {current_user}")
+    st.sidebar.markdown("---")
+    
     st.sidebar.subheader("🔧 Settings")
-    st.session_state.daily_goal = st.sidebar.number_input(
-        "Set Daily Calorie Goal", min_value=800, max_value=4000, value=st.session_state.daily_goal, step=50
+    new_daily_goal = st.sidebar.number_input(
+        "Set Daily Calorie Goal", 
+        min_value=800, 
+        max_value=4000, 
+        value=st.session_state[user_goal_key], 
+        step=50
     )
+    
+    # Save goal if it changed
+    if new_daily_goal != st.session_state[user_goal_key]:
+        st.session_state[user_goal_key] = new_daily_goal
+        save_daily_goal(new_daily_goal, current_user)
 
     st.subheader("🍱 Add Your Meal")
 
@@ -192,7 +287,7 @@ def app():
         elif selected_food:
             best_match = food_df[food_df['food'] == selected_food].iloc[0]
             calories = best_match["calories"] * (total_quantity / 100)
-            st.session_state.meal_log.append({
+            st.session_state[user_meal_log_key].append({
                 "timestamp": datetime.now(IST),
                 "meal_time": meal_time,
                 "food": best_match["food"],
@@ -200,13 +295,13 @@ def app():
                 "calories": round(calories, 2),
                 "source": "dataset"
             })
-            save_meal_log(st.session_state.meal_log)
+            save_meal_log(st.session_state[user_meal_log_key], current_user)
             st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
         else:
             cal, carbs, protein, fat = fetch_nutritional_info(typed_food)
             if cal and carbs is not None:
                 total_calories = cal * (total_quantity / 100)
-                st.session_state.meal_log.append({
+                st.session_state[user_meal_log_key].append({
                     "timestamp": datetime.now(IST),
                     "meal_time": meal_time,
                     "food": typed_food,
@@ -217,7 +312,7 @@ def app():
                     "fat": round(fat * (total_quantity / 100), 2),
                     "source": "API"
                 })
-                save_meal_log(st.session_state.meal_log)
+                save_meal_log(st.session_state[user_meal_log_key], current_user)
                 st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
@@ -226,7 +321,7 @@ def app():
                 protein_input = st.number_input("Protein per 100g", min_value=0.0, key="manual_protein")
                 fat_input = st.number_input("Fat per 100g", min_value=0.0, key="manual_fat")
                 if calories_input > 0:
-                    st.session_state.meal_log.append({
+                    st.session_state[user_meal_log_key].append({
                         "timestamp": datetime.now(IST),
                         "meal_time": meal_time,
                         "food": typed_food,
@@ -237,21 +332,21 @@ def app():
                         "fat": round(fat_input * (total_quantity / 100), 2),
                         "source": "manual"
                     })
-                    save_meal_log(st.session_state.meal_log)
+                    save_meal_log(st.session_state[user_meal_log_key], current_user)
                     st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
                 else:
                     st.info("Enter calories to log manually.")
 
     if st.button("Clear All Logged Meals"):
-        st.session_state.meal_log = []
-        save_meal_log(st.session_state.meal_log)
+        st.session_state[user_meal_log_key] = []
+        save_meal_log(st.session_state[user_meal_log_key], current_user)
         st.success("All logged meals cleared.")
 
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
 
-    if st.session_state.meal_log:
-        df = pd.DataFrame(st.session_state.meal_log)
+    if st.session_state[user_meal_log_key]:
+        df = pd.DataFrame(st.session_state[user_meal_log_key])
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_selected_date = df[df['timestamp'].dt.date == selected_date]
 
@@ -264,8 +359,8 @@ def app():
         st.info("No meals logged yet.")
 
     st.markdown("### 📊 Daily Summary")
-    if st.session_state.meal_log:
-        df = pd.DataFrame(st.session_state.meal_log)
+    if st.session_state[user_meal_log_key]:
+        df = pd.DataFrame(st.session_state[user_meal_log_key])
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_today = df[df['timestamp'].dt.date == date.today()]
 
@@ -286,10 +381,10 @@ def app():
                     st.write(f"{row['quantity']}g, {row['calories']} kcal")
                 with cols[4]:
                     if st.button("Clear This", key=f"clear_{i}"):
-                        st.session_state.meal_log = [meal for j, meal in enumerate(st.session_state.meal_log) if j != i]
-                        save_meal_log(st.session_state.meal_log)
+                        st.session_state[user_meal_log_key] = [meal for j, meal in enumerate(st.session_state[user_meal_log_key]) if j != i]
+                        save_meal_log(st.session_state[user_meal_log_key], current_user)
                         st.success(f"Removed {row['food']} from log.")
-                        st.experimental_rerun()
+                        st.rerun()
 
             total_calories = df_today["calories"].sum()
             total_carbs = df_today["carbs"].sum() if "carbs" in df_today.columns else 0
@@ -300,15 +395,15 @@ def app():
             col1, col2, col3 = st.columns([3, 1, 1])
             with col1:
                 st.markdown(
-                    f"<h3 style='color: {'green' if total_calories <= st.session_state.daily_goal else 'red'};'>Calories Consumed: {total_calories:.2f} kcal</h3>", 
+                    f"<h3 style='color: {'green' if total_calories <= st.session_state[user_goal_key] else 'red'};'>Calories Consumed: {total_calories:.2f} kcal</h3>", 
                     unsafe_allow_html=True
                 )
-                progress = min(total_calories / st.session_state.daily_goal, 1.0)
+                progress = min(total_calories / st.session_state[user_goal_key], 1.0)
                 st.progress(progress)
             with col2:
-                st.metric("Daily Calorie Goal", f"{st.session_state.daily_goal} kcal")
+                st.metric("Daily Calorie Goal", f"{st.session_state[user_goal_key]} kcal")
             with col3:
-                st.metric("Remaining Calories", f"{max(st.session_state.daily_goal - total_calories, 0):.2f} kcal")
+                st.metric("Remaining Calories", f"{max(st.session_state[user_goal_key] - total_calories, 0):.2f} kcal")
 
             # Macronutrient Pie Chart
             nutrients = {
@@ -338,7 +433,7 @@ def app():
             ax2.bar(calories_mealtime.index, calories_mealtime.values, color='#4a90e2')
             ax2.set_ylabel("Calories (kcal)")
             ax2.set_xlabel("Meal Time")
-            ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state.daily_goal * 0.3))
+            ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state[user_goal_key] * 0.3))
             st.pyplot(fig2)
 
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
@@ -354,21 +449,21 @@ def app():
             ax3.set_xlabel("Date")
             ax3.set_xticks(past_week)
             ax3.set_xticklabels([d.strftime("%a %d") for d in past_week], rotation=45)
-            ax3.axhline(st.session_state.daily_goal, color='green', linestyle='--', label='Daily Goal')
+            ax3.axhline(st.session_state[user_goal_key], color='green', linestyle='--', label='Daily Goal')
             ax3.legend()
             st.pyplot(fig3)
 
             # Button to generate PDF report
             if st.button("Download Daily Report PDF"):
-                pdf_bytes = generate_pdf_report(df_today.to_dict('records'), st.session_state.daily_goal)
+                pdf_bytes = generate_pdf_report(df_today.to_dict('records'), st.session_state[user_goal_key], current_user)
                 st.download_button(
                     label="Download PDF",
                     data=pdf_bytes,
-                    file_name=f"diet_report_{date.today()}.pdf",
+                    file_name=f"diet_report_{current_user.replace('@', '_')}_{date.today()}.pdf",
                     mime="application/pdf"
                 )
     else:
         st.info("No meals logged yet today.")
 
 if __name__ == "__main__":
-    app() 
+    app()
