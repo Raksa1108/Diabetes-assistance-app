@@ -13,3 +13,4 @@ supabase
 requests
 pytz
 python-dotenv
+openai
