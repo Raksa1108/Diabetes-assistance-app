@@ -6,20 +6,15 @@ from datetime import datetime, timedelta
 import requests
 import json
 
-# Internal configuration
 _API_KEY = "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"
 _MODEL = "gpt-3.5-turbo"
 
 def _get_nutritional_data(food_item):
-    """
-    Internal function to retrieve nutritional information
-    """
     try:
         headers = {
             'Authorization': f'Bearer {_API_KEY}',
             'Content-Type': 'application/json'
         }
-        
         prompt = f"""
         Provide nutritional information for "{food_item}" per 100g serving in JSON format:
         {{
@@ -33,44 +28,44 @@ def _get_nutritional_data(food_item):
         }}
         Return only the JSON object, no explanations.
         """
-        
         data = {
             "model": _MODEL,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 200,
             "temperature": 0.1
         }
-        
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
             headers=headers,
             json=data,
             timeout=10
         )
-        
         if response.status_code == 200:
             result = response.json()
-            content = result['choices'][0]['message']['content']
-            nutrition_data = json.loads(content)
-            return nutrition_data
-        else:
-            return None
-            
+            content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+            try:
+                nutrition_data = json.loads(content)
+                if not isinstance(nutrition_data, dict):
+                    return None
+                # Validate numeric values
+                for key in ['carbs', 'proteins', 'fats', 'sugar', 'vitamins', 'minerals', 'calories']:
+                    if key in nutrition_data and not isinstance(nutrition_data[key], (int, float)):
+                        return None
+                return nutrition_data
+            except json.JSONDecodeError:
+                return None
+        return None
     except Exception as e:
+        st.error(f"Error fetching nutritional data for {food_item}: {str(e)}")
         return None
 
 def _generate_personalized_recommendations(avg_daily_sugar, weekly_sugar, food_history):
-    """
-    Generate AI-powered personalized diabetes prevention recommendations
-    """
     try:
         headers = {
             'Authorization': f'Bearer {_API_KEY}',
             'Content-Type': 'application/json'
         }
-        
         food_list = ", ".join(food_history[-10:]) if food_history else "No recent foods logged"
-        
         prompt = f"""
         As a nutrition and diabetes prevention specialist, provide 6 specific, actionable recommendations based on this data:
         - Average daily sugar: {avg_daily_sugar:.1f}g
@@ -85,40 +80,30 @@ def _generate_personalized_recommendations(avg_daily_sugar, weekly_sugar, food_h
         5. Lifestyle modifications for metabolic health
 
         Format as 6 bullet points starting with relevant emojis. Be specific and actionable. Do not mention AI, APIs, or that this is generated content. Write as a nutrition expert.
-        
-        Example format:
-        🍎 Replace sugary snacks with...
-        💧 Increase water intake to...
         """
-        
         data = {
             "model": _MODEL,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 400,
             "temperature": 0.3
         }
-        
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
             headers=headers,
             json=data,
             timeout=15
         )
-        
         if response.status_code == 200:
             result = response.json()
-            content = result['choices'][0]['message']['content']
-            # Split by lines and filter out empty lines
+            content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
             recommendations = [line.strip() for line in content.split('\n') if line.strip() and ('🍎' in line or '💧' in line or '🥗' in line or '🏃' in line or '⚖️' in line or '🩺' in line or '🚶' in line or '😴' in line or '📊' in line or '🌟' in line)]
-            return recommendations[:6]  # Limit to 6 recommendations
-        else:
-            return _get_default_recommendations(avg_daily_sugar)
-            
+            return recommendations[:6]
+        return _get_default_recommendations(avg_daily_sugar)
     except Exception as e:
+        st.error(f"Error generating recommendations: {str(e)}")
         return _get_default_recommendations(avg_daily_sugar)
 
 def _get_default_recommendations(avg_daily_sugar):
-    """Fallback recommendations if API fails"""
     if avg_daily_sugar > 50:
         return [
             "🚨 Reduce sugar intake immediately - current levels exceed safe limits by over 100%",
@@ -148,10 +133,8 @@ def _get_default_recommendations(avg_daily_sugar):
         ]
 
 def create_nutrition_pie_chart(nutrition_data):
-    """Create pie chart for macronutrients and micronutrients"""
     if not nutrition_data:
         return None
-    
     labels = ['Carbohydrates', 'Proteins', 'Fats', 'Vitamins', 'Minerals']
     values = [
         nutrition_data.get('carbs', 0),
@@ -160,100 +143,116 @@ def create_nutrition_pie_chart(nutrition_data):
         nutrition_data.get('vitamins', 0),
         nutrition_data.get('minerals', 0)
     ]
-    
     fig = px.pie(
         values=values,
         names=labels,
         title="Nutritional Composition (per 100g)",
         color_discrete_sequence=px.colors.qualitative.Set3
     )
-    
     fig.update_traces(textposition='inside', textinfo='percent+label')
     fig.update_layout(height=400)
-    
     return fig
 
 def create_sugar_intake_charts(meals_df):
-    """Create daily and weekly sugar intake line charts"""
     if meals_df.empty:
         return None, None
-    
-    meals_df['timestamp'] = pd.to_datetime(meals_df['timestamp'])
-    
-    # Daily sugar intake chart
-    daily_sugar = meals_df.groupby(meals_df['timestamp'].dt.date)['sugar'].sum().reset_index()
-    daily_sugar.columns = ['date', 'sugar_intake']
-    
-    daily_fig = px.line(
-        daily_sugar,
-        x='date',
-        y='sugar_intake',
-        title='Daily Sugar Intake Tracking',
-        markers=True,
-        line_shape='spline'
-    )
-    daily_fig.add_hline(y=25, line_dash="dash", line_color="red", annotation_text="Recommended Daily Limit (25g)")
-    daily_fig.update_layout(
-        xaxis_title="Date",
-        yaxis_title="Sugar Intake (grams)",
-        height=400
-    )
-    
-    # Weekly sugar intake chart
-    meals_df['week'] = meals_df['timestamp'].dt.to_period('W').astype(str)
-    weekly_sugar = meals_df.groupby('week')['sugar'].sum().reset_index()
-    
-    weekly_fig = px.line(
-        weekly_sugar,
-        x='week',
-        y='sugar',
-        title='Weekly Sugar Intake Trends',
-        markers=True,
-        line_shape='spline'
-    )
-    weekly_fig.add_hline(y=175, line_dash="dash", line_color="red", annotation_text="Weekly Recommended Limit (175g)")
-    weekly_fig.update_layout(
-        xaxis_title="Week",
-        yaxis_title="Sugar Intake (grams)",
-        height=400
-    )
-    
-    return daily_fig, weekly_fig
+    try:
+        meals_df['timestamp'] = pd.to_datetime(meals_df['timestamp'], errors='coerce')
+        meals_df = meals_df.dropna(subset=['timestamp'])
+        daily_sugar = meals_df.groupby(meals_df['timestamp'].dt.date)['sugar'].sum().reset_index()
+        daily_sugar.columns = ['date', 'sugar_intake']
+        daily_fig = px.line(
+            daily_sugar,
+            x='date',
+            y='sugar_intake',
+            title='Daily Sugar Intake Tracking',
+            markers=True,
+            line_shape='spline'
+        )
+        daily_fig.add_hline(y=25, line_dash="dash", line_color="red", annotation_text="Recommended Daily Limit (25g)")
+        daily_fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Sugar Intake (grams)",
+            height=400
+        )
+        meals_df['week'] = meals_df['timestamp'].dt.to_period('W').astype(str)
+        weekly_sugar = meals_df.groupby('week')['sugar'].sum().reset_index()
+        weekly_fig = px.line(
+            weekly_sugar,
+            x='week',
+            y='sugar',
+            title='Weekly Sugar Intake Trends',
+            markers=True,
+            line_shape='spline'
+        )
+        weekly_fig.add_hline(y=175, line_dash="dash", line_color="red", annotation_text="Weekly Recommended Limit (175g)")
+        weekly_fig.update_layout(
+            xaxis_title="Week",
+            yaxis_title="Sugar Intake (grams)",
+            height=400
+        )
+        return daily_fig, weekly_fig
+    except Exception as e:
+        st.error(f"Error creating sugar intake charts: {str(e)}")
+        return None, None
 
-def nutrition_analysis_app():
-    """Main nutrition analysis and diabetes prevention application"""
+def nutrition_analysis_app(user_email, meal_log):
     st.header("🍎 Smart Nutrition Analysis & Diabetes Prevention")
     
-    # Initialize session state
-    if 'meals_data' not in st.session_state:
-        st.session_state.meals_data = pd.DataFrame(columns=['food_item', 'timestamp', 'carbs', 'proteins', 'fats', 'sugar', 'vitamins', 'minerals', 'calories'])
+    # Validate meal_log
+    if not meal_log or not isinstance(meal_log, list):
+        st.info("🚀 **Get Started**: Log meals in the Diet Tracker tab to analyze your nutrition and diabetes risk.")
+        return
     
-    if 'food_history' not in st.session_state:
-        st.session_state.food_history = []
+    # Validate meal_log entries
+    valid_meals = []
+    for meal in meal_log:
+        if not isinstance(meal, dict):
+            continue
+        if 'food' not in meal or 'timestamp' not in meal:
+            continue
+        valid_meals.append(meal)
     
-    meals_df = st.session_state.meals_data
+    meals_df = pd.DataFrame(valid_meals)
+    if meals_df.empty:
+        st.info("🚀 **Get Started**: Log meals in the Diet Tracker tab to analyze your nutrition and diabetes risk.")
+        return
     
-    # Food analysis section
+    # Ensure required columns
+    required_columns = ['food', 'timestamp', 'carbs', 'proteins', 'fats', 'sugar', 'calories']
+    for col in required_columns:
+        if col not in meals_df.columns:
+            meals_df[col] = 0
+        else:
+            meals_df[col] = pd.to_numeric(meals_df[col], errors='coerce').fillna(0)
+    
+    # Fetch missing nutritional data
+    try:
+        for idx, row in meals_df[meals_df['sugar'] == 0].iterrows():
+            nutrition_data = _get_nutritional_data(row['food'])
+            if nutrition_data and 'sugar' in nutrition_data:
+                quantity = row.get('quantity', 100)
+                meals_df.at[idx, 'sugar'] = nutrition_data['sugar'] * (quantity / 100)
+                meals_df.at[idx, 'carbs'] = nutrition_data.get('carbs', 0) * (quantity / 100)
+                meals_df.at[idx, 'proteins'] = nutrition_data.get('proteins', 0) * (quantity / 100)
+                meals_df.at[idx, 'fats'] = nutrition_data.get('fats', 0) * (quantity / 100)
+                meals_df.at[idx, 'calories'] = nutrition_data.get('calories', 0) * (quantity / 100)
+    except Exception as e:
+        st.error(f"Error updating nutritional data: {str(e)}")
+    
     st.subheader("🔍 Nutritional Analysis")
     food_item = st.text_input("Enter food item to analyze:", placeholder="e.g., apple, brown rice, chicken breast")
     
     if st.button("Analyze Nutrition", type="primary") and food_item:
         with st.spinner("Analyzing nutritional content..."):
             nutrition_data = _get_nutritional_data(food_item)
-            
             if nutrition_data:
-                # Add to history
-                st.session_state.food_history.append(food_item)
-                
                 col1, col2 = st.columns([2, 1])
-                
                 with col1:
                     pie_chart = create_nutrition_pie_chart(nutrition_data)
                     if pie_chart:
                         st.plotly_chart(pie_chart, use_container_width=True)
-                
                 with col2:
-                    # Sugar content prominence
                     sugar_value = nutrition_data.get('sugar', 0)
                     if sugar_value > 15:
                         st.error(f"⚠️ High Sugar: {sugar_value:.1f}g")
@@ -261,8 +260,6 @@ def nutrition_analysis_app():
                         st.warning(f"⚡ Moderate Sugar: {sugar_value:.1f}g")
                     else:
                         st.success(f"✅ Low Sugar: {sugar_value:.1f}g")
-                    
-                    # Detailed nutritional breakdown
                     st.subheader("Nutritional Profile")
                     st.metric("Calories", f"{nutrition_data.get('calories', 0)} kcal", "per 100g")
                     st.write(f"**Carbohydrates:** {nutrition_data.get('carbs', 0):.1f}g")
@@ -270,31 +267,22 @@ def nutrition_analysis_app():
                     st.write(f"**Fats:** {nutrition_data.get('fats', 0):.1f}g")
                     st.write(f"**Vitamins:** {nutrition_data.get('vitamins', 0):.1f}mg")
                     st.write(f"**Minerals:** {nutrition_data.get('minerals', 0):.1f}mg")
-                
-                # Option to add to meal log
-                if st.button("Add to Meal Log"):
-                    new_meal = {
-                        'food_item': food_item,
-                        'timestamp': datetime.now(),
-                        **nutrition_data
-                    }
-                    st.session_state.meals_data = pd.concat([meals_df, pd.DataFrame([new_meal])], ignore_index=True)
-                    st.success(f"Added {food_item} to your meal log!")
-                    st.rerun()
             else:
                 st.error("Unable to analyze this food item. Please try a different food or check your spelling.")
     
-    # Historical analysis and recommendations
     if not meals_df.empty:
         st.subheader("📊 Diabetes Prevention Dashboard")
+        try:
+            meals_df['timestamp'] = pd.to_datetime(meals_df['timestamp'], errors='coerce')
+            meals_df = meals_df.dropna(subset=['timestamp'])
+            daily_sugar = meals_df.groupby(meals_df['timestamp'].dt.date)['sugar'].sum()
+            avg_daily_sugar = daily_sugar.mean() if not daily_sugar.empty else 0
+            weekly_sugar = daily_sugar.tail(7).sum() if len(daily_sugar) >= 7 else daily_sugar.sum()
+        except Exception as e:
+            st.error(f"Error calculating sugar metrics: {str(e)}")
+            avg_daily_sugar = 0
+            weekly_sugar = 0
         
-        # Calculate metrics
-        meals_df['timestamp'] = pd.to_datetime(meals_df['timestamp'])
-        daily_sugar = meals_df.groupby(meals_df['timestamp'].dt.date)['sugar'].sum()
-        avg_daily_sugar = daily_sugar.mean()
-        weekly_sugar = daily_sugar.tail(7).sum()
-        
-        # Display key metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Avg Daily Sugar", f"{avg_daily_sugar:.1f}g", f"{avg_daily_sugar-25:.1f}g vs limit")
@@ -308,9 +296,7 @@ def nutrition_analysis_app():
             meals_count = len(meals_df)
             st.metric("Foods Tracked", f"{meals_count}")
         
-        # Sugar intake visualization
         daily_fig, weekly_fig = create_sugar_intake_charts(meals_df)
-        
         if daily_fig and weekly_fig:
             col1, col2 = st.columns(2)
             with col1:
@@ -318,19 +304,13 @@ def nutrition_analysis_app():
             with col2:
                 st.plotly_chart(weekly_fig, use_container_width=True)
         
-        # AI-powered personalized recommendations
         st.subheader("🎯 Personalized Prevention Plan")
         with st.spinner("Generating personalized recommendations..."):
-            recommendations = _generate_personalized_recommendations(
-                avg_daily_sugar, 
-                weekly_sugar, 
-                st.session_state.food_history
-            )
-            
+            food_history = meals_df['food'].tolist()
+            recommendations = _generate_personalized_recommendations(avg_daily_sugar, weekly_sugar, food_history)
             for recommendation in recommendations:
                 st.markdown(f"• {recommendation}")
         
-        # Risk assessment with specific guidance
         st.subheader("🩺 Health Risk Assessment")
         if avg_daily_sugar > 50:
             st.error("**⚠️ IMMEDIATE ACTION REQUIRED**: Your sugar intake is in the high-risk zone for developing Type 2 diabetes. Consider consulting a healthcare provider within the next few days.")
@@ -341,20 +321,16 @@ def nutrition_analysis_app():
         else:
             st.success("**✅ EXCELLENT CONTROL**: Your sugar intake supports optimal metabolic health. Continue your current approach!")
         
-        # Recent food log
         if len(meals_df) > 0:
             st.subheader("📝 Recent Food Log")
-            recent_meals = meals_df.tail(5)[['food_item', 'timestamp', 'sugar', 'calories']].copy()
+            recent_meals = meals_df.tail(5)[['food', 'timestamp', 'sugar', 'calories']].copy()
             recent_meals['timestamp'] = recent_meals['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
             st.dataframe(recent_meals, use_container_width=True)
     
     else:
-        st.info("🚀 **Get Started**: Analyze your first food item above to begin tracking your nutrition and diabetes risk.")
-        
-        # Educational content for new users
+        st.info("🚀 **Get Started**: Log meals in the Diet Tracker tab to analyze your nutrition and diabetes risk.")
         st.subheader("📚 Why Track Sugar Intake?")
         col1, col2 = st.columns(2)
-        
         with col1:
             st.write("""
             **Diabetes Prevention Benefits:**
@@ -364,7 +340,6 @@ def nutrition_analysis_app():
             - Metabolic health improvement
             - Long-term disease prevention
             """)
-        
         with col2:
             st.write("""
             **Recommended Daily Limits:**
@@ -375,4 +350,4 @@ def nutrition_analysis_app():
             """)
 
 if __name__ == "__main__":
-    nutrition_analysis_app()
+    st.error("Please run this through diet_tracker.py")
