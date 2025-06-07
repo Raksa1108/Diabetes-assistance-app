@@ -95,7 +95,8 @@ def save_meal_log(meal_log, user_email):
             serializable_log = []
             for meal in meal_log:
                 meal_copy = meal.copy()
-                meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
+                if isinstance(meal_copy['timestamp'], datetime):
+                    meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
                 serializable_log.append(meal_copy)
             json.dump(serializable_log, f)
     except Exception as e:
@@ -112,7 +113,12 @@ def load_meal_log(user_email):
                 data = json.load(f)
                 # Convert timestamp strings back to datetime
                 for meal in data:
-                    meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
+                    if isinstance(meal['timestamp'], str):
+                        try:
+                            meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
+                        except ValueError:
+                            # Fallback for different datetime formats
+                            meal['timestamp'] = pd.to_datetime(meal['timestamp'])
                 return data
         return []
     except Exception as e:
@@ -166,7 +172,10 @@ def generate_pdf_report(meal_log, daily_goal, user_email):
     pdf.cell(0, 10, "Logged Meals:", ln=True)
     pdf.set_font("Arial", size=10)
     for meal in meal_log:
-        meal_text = f"{meal['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal"
+        timestamp = meal['timestamp']
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        meal_text = f"{timestamp.strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal"
         # Ensure text is encoded properly to handle special characters
         try:
             pdf.cell(0, 8, meal_text, ln=True)
@@ -290,6 +299,9 @@ def app():
                 "food": best_match["food"],
                 "quantity": total_quantity,
                 "calories": round(calories, 2),
+                "carbs": 0,
+                "protein": 0,
+                "fat": 0,
                 "source": "dataset"
             })
             save_meal_log(st.session_state[user_meal_log_key], current_user)
@@ -344,7 +356,8 @@ def app():
 
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Fix datetime conversion
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
         df_selected_date = df[df['timestamp'].dt.date == selected_date]
 
         if df_selected_date.empty:
@@ -358,7 +371,8 @@ def app():
     st.markdown("### 📊 Daily Summary")
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Fix datetime conversion
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
         df_today = df[df['timestamp'].dt.date == date.today()]
 
         if df_today.empty:
@@ -464,4 +478,3 @@ def app():
 
 if __name__ == "__main__":
     app()
-    
