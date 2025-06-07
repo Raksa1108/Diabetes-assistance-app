@@ -220,9 +220,23 @@ def nutrition_analysis_app(user_email, meal_log, blood_sugar_data):
         else:
             meals_df[col] = pd.to_numeric(meals_df[col], errors='coerce').fillna(0)
     
+    # Handle timestamps carefully
+    try:
+        meals_df['timestamp'] = pd.to_datetime(meals_df['timestamp'], errors='coerce')
+        # Check if timestamps are naive or aware
+        if meals_df['timestamp'].dt.tz is None:
+            # Naive timestamps: localize to IST
+            meals_df['timestamp'] = meals_df['timestamp'].dt.tz_localize('UTC').dt.tz_convert(IST)
+        else:
+            # Already timezone-aware: ensure IST
+            meals_df['timestamp'] = meals_df['timestamp'].dt.tz_convert(IST)
+        meals_df = meals_df.dropna(subset=['timestamp'])
+    except Exception as e:
+        st.error(f"Error processing timestamps: {str(e)}")
+        return
+    
     # Fetch missing nutritional data for today’s meals
     today = datetime.now(IST).date()
-    meals_df['timestamp'] = pd.to_datetime(meals_df['timestamp'], errors='coerce').dt.tz_convert(IST)
     today_meals = meals_df[meals_df['timestamp'].dt.date == today]
     
     total_nutrients = {'carbs': 0, 'proteins': 0, 'fats': 0, 'sugar': 0, 'vitamins': 0, 'minerals': 0, 'calories': 0}
@@ -256,7 +270,7 @@ def nutrition_analysis_app(user_email, meal_log, blood_sugar_data):
         blood_sugar_df = blood_sugar_df.dropna(subset=['timestamp'])
         avg_glucose = blood_sugar_df['glucose'].mean() if not blood_sugar_df['glucose'].empty else 0
     
-    # Diabetes Prevention Dashboard
+    # Diabetes Management Dashboard
     st.subheader("📊 Diabetes Management Dashboard")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
