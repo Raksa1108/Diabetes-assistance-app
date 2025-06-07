@@ -73,7 +73,6 @@ def fetch_nutritional_info(food_name):
 
 def get_user_filename(user_email):
     """Generate a safe filename for user's meal log based on email."""
-    # Create a hash of the email for privacy and filename safety
     email_hash = hashlib.md5(user_email.encode()).hexdigest()[:12]
     return f"meal_log_{email_hash}.json"
 
@@ -86,12 +85,10 @@ def save_meal_log(meal_log, user_email):
     """Save meal log to a JSON file for persistence for specific user."""
     filename = get_user_filename(user_email)
     try:
-        # Create user_data directory if it doesn't exist
         os.makedirs("user_data", exist_ok=True)
         filepath = os.path.join("user_data", filename)
         
         with open(filepath, "w") as f:
-            # Convert datetime to string for JSON serialization
             serializable_log = []
             for meal in meal_log:
                 meal_copy = meal.copy()
@@ -110,9 +107,13 @@ def load_meal_log(user_email):
         if os.path.exists(filepath):
             with open(filepath, "r") as f:
                 data = json.load(f)
-                # Convert timestamp strings back to datetime
+                # Convert timestamp strings back to datetime with error handling
                 for meal in data:
-                    meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
+                    try:
+                        meal['timestamp'] = datetime.fromisoformat(meal['timestamp']).astimezone(IST)
+                    except (ValueError, TypeError):
+                        # If parsing fails, set to current time as fallback
+                        meal['timestamp'] = datetime.now(IST)
                 return data
         return []
     except Exception as e:
@@ -167,11 +168,9 @@ def generate_pdf_report(meal_log, daily_goal, user_email):
     pdf.set_font("Arial", size=10)
     for meal in meal_log:
         meal_text = f"{meal['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal"
-        # Ensure text is encoded properly to handle special characters
         try:
             pdf.cell(0, 8, meal_text, ln=True)
         except UnicodeEncodeError:
-            # Fallback for non-Latin characters
             pdf.cell(0, 8, meal_text.encode('latin-1', 'replace').decode('latin-1'), ln=True)
 
     pdf_output = BytesIO()
@@ -344,7 +343,13 @@ def app():
 
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Ensure timestamp is datetime, handle invalid entries
+        try:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.tz_convert(IST)
+            df = df.dropna(subset=['timestamp'])  # Drop rows with invalid timestamps
+        except Exception as e:
+            st.error(f"Error processing timestamps: {e}")
+            df['timestamp'] = pd.to_datetime(datetime.now(IST))  # Fallback to current time
         df_selected_date = df[df['timestamp'].dt.date == selected_date]
 
         if df_selected_date.empty:
@@ -358,7 +363,13 @@ def app():
     st.markdown("### 📊 Daily Summary")
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Ensure timestamp is datetime, handle invalid entries
+        try:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.tz_convert(IST)
+            df = df.dropna(subset=['timestamp'])  # Drop rows with invalid timestamps
+        except Exception as e:
+            st.error(f"Error processing timestamps: {e}")
+            df['timestamp'] = pd.to_datetime(datetime.now(IST))  # Fallback to current time
         df_today = df[df['timestamp'].dt.date == date.today()]
 
         if df_today.empty:
