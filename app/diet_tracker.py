@@ -356,6 +356,7 @@ def app():
         save_meal_log(st.session_state[user_meal_log_key], current_user)
         st.success("All logged meals cleared.")
 
+    # Modified Calendar View Section
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
 
@@ -363,17 +364,10 @@ def app():
         df = pd.DataFrame(st.session_state[user_meal_log_key])
         
         # Convert timestamp to datetime with proper IST handling
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce', utc=True).dt.tz_convert(IST)
         
-        # Handle timezone conversion properly
-        if not df.empty:
-            # Check if timezone info exists
-            if df['timestamp'].dt.tz is None:
-                # If no timezone, assume it's already in IST
-                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, errors='coerce')
-            else:
-                # Convert to IST
-                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
+        # Drop rows with invalid timestamps
+        df = df.dropna(subset=['timestamp'])
         
         # Create date column for filtering (in IST)
         df['meal_date'] = df['timestamp'].dt.date
@@ -383,6 +377,10 @@ def app():
 
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
+            # Debugging: Show available dates
+            available_dates = df['meal_date'].unique()
+            if available_dates.size > 0:
+                st.write("Available dates with logged meals:", [d.strftime('%Y-%m-%d') for d in available_dates])
         else:
             st.subheader(f"Meals for {selected_date.strftime('%Y-%m-%d')}")
             
