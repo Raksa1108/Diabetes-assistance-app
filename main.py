@@ -9,6 +9,7 @@ from app import about_diabetes
 from app import ai_chat
 from app import diet_tracker
 from app import calculation
+from app import nutrient_analysis
 from supabase_client import supabase
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
