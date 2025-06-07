@@ -359,11 +359,14 @@ def app():
         # Fix datetime conversion with timezone handling
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
         # Handle timezone conversion more safely
-        try:
-            df['timestamp'] = df['timestamp'].dt.tz_localize(None).dt.tz_localize(IST)
-        except:
-            # If already timezone aware, convert to IST
-            df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
+# Always parse and convert to IST (handles both naive & aware datetimes)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        if df['timestamp'].dt.tz is None or str(df['timestamp'].dt.tz) == 'None':
+    # If naive, localize to IST
+               df['timestamp'] = df['timestamp'].dt.tz_localize(IST)
+        else:
+    # If tz-aware, convert to IST
+               df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
         
         # Get today's date in IST
         today_ist = datetime.now(IST).date()
@@ -382,11 +385,13 @@ def app():
         # Fix datetime conversion with timezone handling
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
         # Handle timezone conversion more safely
-        try:
-            df['timestamp'] = df['timestamp'].dt.tz_localize(None).dt.tz_localize(IST)
-        except:
-            # If already timezone aware, convert to IST
-            df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        if df['timestamp'].dt.tz is None or str(df['timestamp'].dt.tz) == 'None':
+    # If naive, localize to IST
+               df['timestamp'] = df['timestamp'].dt.tz_localize(IST)
+        else:
+    # If tz-aware, convert to IST
+               df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
         
         # Get today's date in IST
         today_ist = datetime.now(IST).date()
