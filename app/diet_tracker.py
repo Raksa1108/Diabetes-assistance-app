@@ -421,8 +421,6 @@ def app():
                 )
                 ax.axis('equal')
                 st.pyplot(fig)
-            else:
-                st.info("No macronutrient data available to plot.")
 
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
@@ -461,6 +459,5 @@ def app():
                 )
     else:
         st.info("No meals logged yet today.")
-
 if __name__ == "__main__":
     app()
