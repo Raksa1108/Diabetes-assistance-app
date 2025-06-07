@@ -10,7 +10,6 @@ import json
 import os
 from data.base import st_style, head
 import hashlib
-from app.nutrient_analysis import nutrition_analysis_app  # Import nutrient_analysis.py from app folder
 
 # Timezone import for IST
 try:
@@ -175,33 +174,30 @@ def initialize_user_session(user_email):
     if meal_log_key not in st.session_state:
         st.session_state[meal_log_key] = load_meal_log(user_email)
 
-def diet_tracker_tab(current_user, food_df):
+def app():
+    current_user = get_current_user()
+    initialize_user_session(current_user)
+    pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
+    food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
     user_goal_key = f"daily_goal_{current_user}"
     user_meal_log_key = f"meal_log_{current_user}"
-    
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
-    
     st.title("🥗 Diet Tracker for Diabetes")
-    
     st.sidebar.markdown(f"**👤 Logged in as:** {current_user}")
     st.sidebar.markdown("---")
-    
     st.sidebar.subheader("🔧 Settings")
     new_daily_goal = st.sidebar.number_input(
-        "Set Daily Calorie Goal", 
-        min_value=800, 
-        max_value=4000, 
-        value=st.session_state[user_goal_key], 
+        "Set Daily Calorie Goal",
+        min_value=800,
+        max_value=4000,
+        value=st.session_state[user_goal_key],
         step=50
     )
-    
     if new_daily_goal != st.session_state[user_goal_key]:
         st.session_state[user_goal_key] = new_daily_goal
         save_daily_goal(new_daily_goal, current_user)
-    
     st.subheader("🍱 Add Your Meal")
-    
     serving_sizes = {
         "Custom (grams)": None,
         "1 bowl": 200,
@@ -211,9 +207,7 @@ def diet_tracker_tab(current_user, food_df):
         "1 piece": 50,
         "1 slice": 30,
     }
-    
     typed_food = st.text_input("Type to search food").strip().lower()
-    
     if typed_food:
         matched_foods = food_df[food_df['food'].str.contains(typed_food, na=False)]
         matched_list = matched_foods['food'].tolist()
@@ -225,7 +219,6 @@ def diet_tracker_tab(current_user, food_df):
     else:
         matched_list = []
         selected_food = None
-    
     col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
         selected_serving = st.selectbox("Select Serving Size", list(serving_sizes.keys()))
@@ -237,11 +230,8 @@ def diet_tracker_tab(current_user, food_df):
             st.write(f"Equivalent to {quantity_per_piece} grams per piece")
     with col3:
         num_pieces = st.number_input("Number of Pieces", min_value=1, max_value=20, step=1, value=1)
-    
     total_quantity = quantity_per_piece * num_pieces
-    
     meal_time = st.selectbox("Meal Time", ["Breakfast", "Lunch", "Dinner", "Snack"])
-    
     if st.button("Log Meal"):
         if not typed_food:
             st.error("Please type a food name to log.")
@@ -297,20 +287,16 @@ def diet_tracker_tab(current_user, food_df):
                     st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
                 else:
                     st.info("Enter calories to log manually.")
-    
     if st.button("Clear All Logged Meals"):
         st.session_state[user_meal_log_key] = []
         save_meal_log(st.session_state[user_meal_log_key], current_user)
         st.success("All logged meals cleared.")
-    
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
-    
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_selected_date = df[df['timestamp'].dt.date == selected_date]
-    
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
         else:
@@ -318,13 +304,11 @@ def diet_tracker_tab(current_user, food_df):
             st.dataframe(df_selected_date[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp", ascending=False))
     else:
         st.info("No meals logged yet.")
-    
     st.markdown("### 📊 Daily Summary")
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_today = df[df['timestamp'].dt.date == date.today()]
-    
         if df_today.empty:
             st.info("No meals logged for today.")
         else:
@@ -345,16 +329,14 @@ def diet_tracker_tab(current_user, food_df):
                         save_meal_log(st.session_state[user_meal_log_key], current_user)
                         st.success(f"Removed {row['food']} from log.")
                         st.rerun()
-    
             total_calories = df_today["calories"].sum()
             total_carbs = df_today["carbs"].sum() if "carbs" in df_today.columns else 0
             total_protein = df_today["protein"].sum() if "protein" in df_today.columns else 0
             total_fat = df_today["fat"].sum() if "fat" in df_today.columns else 0
-    
             col1, col2, col3 = st.columns([3, 1, 1])
             with col1:
                 st.markdown(
-                    f"<h3 style='color: {'green' if total_calories <= st.session_state[user_goal_key] else 'red'};'>Calories Consumed: {total_calories:.2f} kcal</h3>", 
+                    f"<h3 style='color: {'green' if total_calories <= st.session_state[user_goal_key] else 'red'};'>Calories Consumed: {total_calories:.2f} kcal</h3>",
                     unsafe_allow_html=True
                 )
                 progress = min(total_calories / st.session_state[user_goal_key], 1.0)
@@ -363,14 +345,12 @@ def diet_tracker_tab(current_user, food_df):
                 st.metric("Daily Calorie Goal", f"{st.session_state[user_goal_key]} kcal")
             with col3:
                 st.metric("Remaining Calories", f"{max(st.session_state[user_goal_key] - total_calories, 0):.2f} kcal")
-    
             nutrients = {
                 "Carbohydrates": total_carbs,
                 "Proteins": total_protein,
                 "Fats": total_fat,
             }
             nutrients = {k: v for k, v in nutrients.items() if v and not pd.isna(v)}
-    
             if nutrients:
                 fig, ax = plt.subplots()
                 ax.pie(
@@ -384,7 +364,6 @@ def diet_tracker_tab(current_user, food_df):
                 st.pyplot(fig)
             else:
                 st.info("No macronutrient data available to plot.")
-    
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
             fig2, ax2 = plt.subplots()
@@ -393,13 +372,11 @@ def diet_tracker_tab(current_user, food_df):
             ax2.set_xlabel("Meal Time")
             ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state[user_goal_key] * 0.3))
             st.pyplot(fig2)
-    
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
             today = date.today()
             past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]
             df['date_only'] = df['timestamp'].dt.date
             weekly_calories = df.groupby('date_only')['calories'].sum().reindex(past_week, fill_value=0)
-    
             fig3, ax3 = plt.subplots()
             ax3.plot(past_week, weekly_calories.values, marker='o', linestyle='-', color='#ff7f0e')
             ax3.set_title("Calories Consumed Over Past 7 Days")
@@ -410,7 +387,6 @@ def diet_tracker_tab(current_user, food_df):
             ax3.axhline(st.session_state[user_goal_key], color='green', linestyle='--', label='Daily Goal')
             ax3.legend()
             st.pyplot(fig3)
-    
             if st.button("Download Daily Report PDF"):
                 pdf_bytes = generate_pdf_report(df_today.to_dict('records'), st.session_state[user_goal_key], current_user)
                 st.download_button(
@@ -421,24 +397,6 @@ def diet_tracker_tab(current_user, food_df):
                 )
     else:
         st.info("No meals logged yet today.")
-
-def app():
-    current_user = get_current_user()
-    initialize_user_session(current_user)
-    
-    pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
-    food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
-    
-    # Create tabs
-    tab1, tab2 = st.tabs(["Diet Tracker", "Nutrient Analysis"])
-    
-    with tab1:
-        diet_tracker_tab(current_user, food_df)
-    
-    with tab2:
-        # Pass user-specific meal log to nutrient_analysis_app
-        meal_log = st.session_state[f"meal_log_{current_user}"]
-        nutrition_analysis_app(current_user, meal_log)
 
 if __name__ == "__main__":
     app()
