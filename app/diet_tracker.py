@@ -79,7 +79,8 @@ def fetch_nutritional_info(food_name):
 def get_micronutrient_analysis(food_name, quantity):
     """Get detailed micronutrient analysis using AI"""
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        genai.configure(api_key=st.secrets["gemini"]["api_key"])
+        model = genai.GenerativeModel("gemini-2.0-flash")
         prompt = f"""
         Analyze the micronutrient content of {quantity}g of {food_name}. Provide detailed nutritional information including:
         1. Sugar content (natural and added sugars in grams)
