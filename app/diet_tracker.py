@@ -266,7 +266,6 @@ def app():
             selected_food = st.selectbox("Select a matching food", matched_list)
         else:
             selected_food = None
-            st.warning("No matches found in datasets.")
     else:
         matched_list = []
         selected_food = None
