@@ -1,4 +1,3 @@
-# sugar_tracker.py
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -19,7 +18,7 @@ except ImportError:
     IST = timezone("Asia/Kolkata")
 
 # Initialize OpenAI client
-client = OpenAI(api_key="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")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "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"))
 
 def get_user_filename(user_email):
     """Generate a safe filename for user's sugar level log based on email."""
@@ -103,7 +102,8 @@ def get_ai_recommendations(sugar_levels_data, latest_reading):
         
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"Unable to generate recommendations at this time. Please consult with your healthcare provider for personalized advice."
+        st.error(f"Error generating recommendations: {str(e)}")
+        return "Unable to generate recommendations at this time. Please consult with your healthcare provider for personalized advice."
 
 def get_current_user():
     """Get current user email from session state."""
@@ -225,7 +225,7 @@ def app():
     notes = st.text_area("Notes (optional)", placeholder="Any symptoms, medication changes, etc.")
     
     if st.button("Log Sugar Level"):
-        log_timestamp = datetime.combine(custom_date, datetime.now().time()).astimezone(IST)
+        log_timestamp = datetime.combine(custom_date, datetime.min.time()).astimezone(IST)
         
         st.session_state[user_sugar_log_key].append({
             "timestamp": log_timestamp,
@@ -245,6 +245,49 @@ def app():
         save_sugar_log(st.session_state[user_sugar_log_key], current_user)
         st.success("All sugar level logs cleared.")
         st.rerun()
+    
+    # Calendar View
+    st.markdown("### 📅 Calendar View")
+    selected_date = st.date_input("Select a date to view logged sugar levels", value=date.today())
+
+    if st.session_state[user_sugar_log_key]:
+        df = pd.DataFrame(st.session_state[user_sugar_log_key])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        
+        # Handle timezone conversion properly
+        if not df.empty:
+            if df['timestamp'].dt.tz is None:
+                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, ambiguous='raise', nonexistent='raise')
+            else:
+                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
+        
+        df_selected_date = df[df['timestamp'].dt.date == selected_date]
+
+        if df_selected_date.empty:
+            st.info(f"No sugar levels logged for {selected_date.strftime('%Y-%m-%d')}.")
+        else:
+            st.subheader(f"Sugar Levels for {selected_date.strftime('%Y-%m-%d')}")
+            # Display table with "Clear This" button for each entry
+            for i, row in df_selected_date.sort_values("timestamp", ascending=False).iterrows():
+                cols = st.columns([2, 1, 2, 2, 1])
+                with cols[0]:
+                    st.write(row["timestamp"].strftime("%Y-%m-%d %H:%M:%S"))
+                with cols[1]:
+                    st.write(f"{row['sugar_level']} mg/dL")
+                with cols[2]:
+                    st.write(row["measurement_time"])
+                with cols[3]:
+                    st.write(row["notes"] if row["notes"] else "-")
+                with cols[4]:
+                    if st.button("🗑️", key=f"calendar_clear_{i}_{selected_date}"):
+                        st.session_state[user_sugar_log_key] = [entry for j, entry in enumerate(st.session_state[user_sugar_log_key]) if j != i]
+                        save_sugar_log(st.session_state[user_sugar_log_key], current_user)
+                        st.success(f"Removed sugar level reading from log.")
+                        st.rerun()
+    
+    # Debug option to view raw sugar log
+    if st.checkbox("Show Raw Sugar Log for Debugging"):
+        st.write("Raw Sugar Log:", st.session_state[user_sugar_log_key])
     
     # Display data if available
     if st.session_state[user_sugar_log_key]:
@@ -313,7 +356,8 @@ def app():
         display_df['timestamp'] = display_df['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
         
         # Add delete buttons
-        for i, row in display_df.iterrows():
+        for i, row in enumerate(display_df.iterrows()):
+            row_index, row = row
             col1, col2, col3, col4, col5 = st.columns([2, 1, 2, 2, 1])
             with col1:
                 st.write(row['timestamp'])
@@ -325,11 +369,9 @@ def app():
                 st.write(row['notes'] if row['notes'] else "-")
             with col5:
                 if st.button("🗑️", key=f"delete_{i}"):
-                    # Remove from session state
-                    original_index = recent_df.index[recent_df.index == i][0]
                     st.session_state[user_sugar_log_key] = [
                         entry for j, entry in enumerate(st.session_state[user_sugar_log_key]) 
-                        if j != original_index
+                        if j != i
                     ]
                     save_sugar_log(st.session_state[user_sugar_log_key], current_user)
                     st.success("Reading deleted!")
