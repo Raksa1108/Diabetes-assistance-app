@@ -284,26 +284,21 @@ def app():
         elif selected_food:
             best_match = food_df[food_df['food'] == selected_food].iloc[0]
             calories = best_match["calories"] * (total_quantity / 100)
-            new_meal = {
+            st.session_state[user_meal_log_key].append({
                 "timestamp": datetime.now(IST),
                 "meal_time": meal_time,
                 "food": best_match["food"],
                 "quantity": total_quantity,
                 "calories": round(calories, 2),
-                "carbs": 0,
-                "protein": 0,
-                "fat": 0,
                 "source": "dataset"
-            }
-            st.session_state[user_meal_log_key].append(new_meal)
+            })
             save_meal_log(st.session_state[user_meal_log_key], current_user)
             st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
-            st.rerun()
         else:
             cal, carbs, protein, fat = fetch_nutritional_info(typed_food)
             if cal and carbs is not None:
                 total_calories = cal * (total_quantity / 100)
-                new_meal = {
+                st.session_state[user_meal_log_key].append({
                     "timestamp": datetime.now(IST),
                     "meal_time": meal_time,
                     "food": typed_food,
@@ -313,19 +308,17 @@ def app():
                     "protein": round(protein * (total_quantity / 100), 2),
                     "fat": round(fat * (total_quantity / 100), 2),
                     "source": "API"
-                }
-                st.session_state[user_meal_log_key].append(new_meal)
+                })
                 save_meal_log(st.session_state[user_meal_log_key], current_user)
                 st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
-                st.rerun()
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
                 calories_input = st.number_input("Calories per 100g", min_value=0.0, key="manual_cal")
                 carbs_input = st.number_input("Carbohydrates per 100g", min_value=0.0, key="manual_carb")
                 protein_input = st.number_input("Protein per 100g", min_value=0.0, key="manual_protein")
                 fat_input = st.number_input("Fat per 100g", min_value=0.0, key="manual_fat")
-                if st.button("Add Manual Entry") and calories_input > 0:
-                    new_meal = {
+                if calories_input > 0:
+                    st.session_state[user_meal_log_key].append({
                         "timestamp": datetime.now(IST),
                         "meal_time": meal_time,
                         "food": typed_food,
@@ -335,17 +328,16 @@ def app():
                         "protein": round(protein_input * (total_quantity / 100), 2),
                         "fat": round(fat_input * (total_quantity / 100), 2),
                         "source": "manual"
-                    }
-                    st.session_state[user_meal_log_key].append(new_meal)
+                    })
                     save_meal_log(st.session_state[user_meal_log_key], current_user)
                     st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
-                    st.rerun()
+                else:
+                    st.info("Enter calories to log manually.")
 
     if st.button("Clear All Logged Meals"):
         st.session_state[user_meal_log_key] = []
         save_meal_log(st.session_state[user_meal_log_key], current_user)
         st.success("All logged meals cleared.")
-        st.rerun()
 
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
@@ -374,7 +366,7 @@ def app():
         else:
             st.subheader("Today's Logged Meals")
             # Display table with "Clear This" button for each entry
-            for idx, (i, row) in enumerate(df_today.sort_values("timestamp", ascending=False).iterrows()):
+            for i, row in df_today.sort_values("timestamp", ascending=False).iterrows():
                 cols = st.columns([2, 2, 2, 2, 1])
                 with cols[0]:
                     st.write(row["timestamp"].strftime("%Y-%m-%d %H:%M:%S"))
@@ -385,15 +377,8 @@ def app():
                 with cols[3]:
                     st.write(f"{row['quantity']}g, {row['calories']} kcal")
                 with cols[4]:
-                    if st.button("Clear This", key=f"clear_{i}_{idx}"):
-                        # Find the exact meal in the session state and remove it
-                        original_meals = st.session_state[user_meal_log_key]
-                        for j, meal in enumerate(original_meals):
-                            if (meal['timestamp'] == row['timestamp'] and 
-                                meal['food'] == row['food'] and 
-                                meal['calories'] == row['calories']):
-                                st.session_state[user_meal_log_key].pop(j)
-                                break
+                    if st.button("Clear This", key=f"clear_{i}"):
+                        st.session_state[user_meal_log_key] = [meal for j, meal in enumerate(st.session_state[user_meal_log_key]) if j != i]
                         save_meal_log(st.session_state[user_meal_log_key], current_user)
                         st.success(f"Removed {row['food']} from log.")
                         st.rerun()
