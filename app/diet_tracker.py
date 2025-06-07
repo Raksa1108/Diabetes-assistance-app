@@ -112,7 +112,6 @@ def load_meal_log(user_email):
                     try:
                         meal['timestamp'] = datetime.fromisoformat(meal['timestamp']).astimezone(IST)
                     except (ValueError, TypeError):
-                        # If parsing fails, set to current time as fallback
                         meal['timestamp'] = datetime.now(IST)
                 return data
         return []
@@ -283,21 +282,24 @@ def app():
         elif selected_food:
             best_match = food_df[food_df['food'] == selected_food].iloc[0]
             calories = best_match["calories"] * (total_quantity / 100)
-            st.session_state[user_meal_log_key].append({
+            meal_entry = {
                 "timestamp": datetime.now(IST),
                 "meal_time": meal_time,
                 "food": best_match["food"],
                 "quantity": total_quantity,
                 "calories": round(calories, 2),
                 "source": "dataset"
-            })
+            }
+            st.session_state[user_meal_log_key].append(meal_entry)
             save_meal_log(st.session_state[user_meal_log_key], current_user)
             st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
+            # Debug: Display the logged meal's timestamp
+            st.write(f"Debug: Meal logged at {meal_entry['timestamp']} (IST)")
         else:
             cal, carbs, protein, fat = fetch_nutritional_info(typed_food)
             if cal and carbs is not None:
                 total_calories = cal * (total_quantity / 100)
-                st.session_state[user_meal_log_key].append({
+                meal_entry = {
                     "timestamp": datetime.now(IST),
                     "meal_time": meal_time,
                     "food": typed_food,
@@ -307,9 +309,11 @@ def app():
                     "protein": round(protein * (total_quantity / 100), 2),
                     "fat": round(fat * (total_quantity / 100), 2),
                     "source": "API"
-                })
+                }
+                st.session_state[user_meal_log_key].append(meal_entry)
                 save_meal_log(st.session_state[user_meal_log_key], current_user)
                 st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
+                st.write(f"Debug: Meal logged at {meal_entry['timestamp']} (IST)")
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
                 calories_input = st.number_input("Calories per 100g", min_value=0.0, key="manual_cal")
@@ -317,7 +321,7 @@ def app():
                 protein_input = st.number_input("Protein per 100g", min_value=0.0, key="manual_protein")
                 fat_input = st.number_input("Fat per 100g", min_value=0.0, key="manual_fat")
                 if calories_input > 0:
-                    st.session_state[user_meal_log_key].append({
+                    meal_entry = {
                         "timestamp": datetime.now(IST),
                         "meal_time": meal_time,
                         "food": typed_food,
@@ -327,9 +331,11 @@ def app():
                         "protein": round(protein_input * (total_quantity / 100), 2),
                         "fat": round(fat_input * (total_quantity / 100), 2),
                         "source": "manual"
-                    })
+                    }
+                    st.session_state[user_meal_log_key].append(meal_entry)
                     save_meal_log(st.session_state[user_meal_log_key], current_user)
                     st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
+                    st.write(f"Debug: Meal logged at {meal_entry['timestamp']} (IST)")
                 else:
                     st.info("Enter calories to log manually.")
 
@@ -343,14 +349,21 @@ def app():
 
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        # Ensure timestamp is datetime, handle invalid entries
+        # Ensure timestamp is datetime and in IST
         try:
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.tz_convert(IST)
-            df = df.dropna(subset=['timestamp'])  # Drop rows with invalid timestamps
+            df = df.dropna(subset=['timestamp'])
         except Exception as e:
             st.error(f"Error processing timestamps: {e}")
-            df['timestamp'] = pd.to_datetime(datetime.now(IST))  # Fallback to current time
-        df_selected_date = df[df['timestamp'].dt.date == selected_date]
+            df['timestamp'] = pd.to_datetime(datetime.now(IST))
+        # Convert timestamp to naive date in IST for comparison
+        df['date_only'] = df['timestamp'].dt.tz_convert(IST).dt.date
+        df_selected_date = df[df['date_only'] == selected_date]
+
+        # Debug: Show all timestamps
+        st.write("Debug: All meal timestamps in log:")
+        for ts in df['timestamp']:
+            st.write(f"- {ts} (date: {ts.date()})")
 
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
@@ -363,14 +376,23 @@ def app():
     st.markdown("### 📊 Daily Summary")
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        # Ensure timestamp is datetime, handle invalid entries
+        # Ensure timestamp is datetime and in IST
         try:
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.tz_convert(IST)
-            df = df.dropna(subset=['timestamp'])  # Drop rows with invalid timestamps
+            df = df.dropna(subset=['timestamp'])
         except Exception as e:
             st.error(f"Error processing timestamps: {e}")
-            df['timestamp'] = pd.to_datetime(datetime.now(IST))  # Fallback to current time
-        df_today = df[df['timestamp'].dt.date == date.today()]
+            df['timestamp'] = pd.to_datetime(datetime.now(IST))
+        # Convert timestamp to naive date in IST for comparison
+        df['date_only'] = df['timestamp'].dt.tz_convert(IST).dt.date
+        today_date = date.today()
+        df_today = df[df['date_only'] == today_date]
+
+        # Debug: Show today's date and timestamps
+        st.write(f"Debug: Today's date: {today_date}")
+        st.write("Debug: Timestamps for today's meals:")
+        for ts in df[df['date_only'] == today_date]['timestamp']:
+            st.write(f"- {ts}")
 
         if df_today.empty:
             st.info("No meals logged for today.")
@@ -447,7 +469,6 @@ def app():
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
             today = date.today()
             past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]  # 7 days ascending
-            df['date_only'] = df['timestamp'].dt.date
             weekly_calories = df.groupby('date_only')['calories'].sum().reindex(past_week, fill_value=0)
 
             fig3, ax3 = plt.subplots()
