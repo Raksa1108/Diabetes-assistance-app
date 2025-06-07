@@ -465,11 +465,19 @@ def app():
             ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state[user_goal_key] * 0.3))
             st.pyplot(fig2)
 
+ # ... [all your code remains unchanged above]
+
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
-            today = date.today()
+            today = datetime.now(IST).date()
             past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]  # 7 days ascending
-            df['date_only'] = df['timestamp'].dt.date
-            weekly_calories = df.groupby('date_only')['calories'].sum().reindex(past_week, fill_value=0)
+
+            # Ensure timestamp is in IST and is a date
+            df['date_only'] = df['timestamp'].dt.tz_localize(None).dt.tz_localize(IST).dt.date if df['timestamp'].dt.tz is None else df['timestamp'].dt.tz_convert(IST).dt.date
+
+            # Group by date_only and sum calories
+            weekly_calories = df.groupby('date_only')['calories'].sum()
+            # Reindex to ensure every day is present (missing days will be zero)
+            weekly_calories = weekly_calories.reindex(past_week, fill_value=0)
 
             fig3, ax3 = plt.subplots()
             ax3.plot(past_week, weekly_calories.values, marker='o', linestyle='-', color='#ff7f0e')
@@ -481,6 +489,8 @@ def app():
             ax3.axhline(st.session_state[user_goal_key], color='green', linestyle='--', label='Daily Goal')
             ax3.legend()
             st.pyplot(fig3)
+
+# ... [all your code remains unchanged below]
 
             # Button to generate PDF report
             if st.button("Download Daily Report PDF"):
