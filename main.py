@@ -9,7 +9,7 @@ from app import about_diabetes
 from app import ai_chat
 from app import diet_tracker
 from app import calculation
-
+from app import sugar_tracker
 from supabase_client import supabase
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -204,6 +204,7 @@ def show_app_nav():
         "INPUTS CALCULATION",
         "SHAP WATERFALL",
         "DIET TRACKER",
+        "SUGAR TRACKER",
         "PERFORMANCE",
         "ASK AI",
         "SETTINGS",
@@ -226,6 +227,8 @@ def show_app_nav():
             shap_waterfall.app(None)
     elif app_mode == "DIET TRACKER":
         diet_tracker.app()
+    elif app_mode == "SUGAR TRACKER":  
+        sugar_tracker.app()
     elif app_mode == "PERFORMANCE":
         performance.app()
     elif app_mode == "SETTINGS":
