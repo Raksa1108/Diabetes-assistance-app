@@ -73,6 +73,7 @@ def fetch_nutritional_info(food_name):
 
 def get_user_filename(user_email):
     """Generate a safe filename for user's meal log based on email."""
+    # Create a hash of the email for privacy and filename safety
     email_hash = hashlib.md5(user_email.encode()).hexdigest()[:12]
     return f"meal_log_{email_hash}.json"
 
@@ -85,10 +86,12 @@ def save_meal_log(meal_log, user_email):
     """Save meal log to a JSON file for persistence for specific user."""
     filename = get_user_filename(user_email)
     try:
+        # Create user_data directory if it doesn't exist
         os.makedirs("user_data", exist_ok=True)
         filepath = os.path.join("user_data", filename)
         
         with open(filepath, "w") as f:
+            # Convert datetime to string for JSON serialization
             serializable_log = []
             for meal in meal_log:
                 meal_copy = meal.copy()
@@ -107,6 +110,7 @@ def load_meal_log(user_email):
         if os.path.exists(filepath):
             with open(filepath, "r") as f:
                 data = json.load(f)
+                # Convert timestamp strings back to datetime
                 for meal in data:
                     meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
                 return data
@@ -137,7 +141,7 @@ def load_daily_goal(user_email):
             with open(filepath, "r") as f:
                 data = json.load(f)
                 return data.get("daily_goal", 2000)
-        return 2000
+        return 2000  # default goal
     except Exception as e:
         st.error(f"Failed to load daily goal: {e}")
         return 2000
@@ -163,9 +167,11 @@ def generate_pdf_report(meal_log, daily_goal, user_email):
     pdf.set_font("Arial", size=10)
     for meal in meal_log:
         meal_text = f"{meal['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal"
+        # Ensure text is encoded properly to handle special characters
         try:
             pdf.cell(0, 8, meal_text, ln=True)
         except UnicodeEncodeError:
+            # Fallback for non-Latin characters
             pdf.cell(0, 8, meal_text.encode('latin-1', 'replace').decode('latin-1'), ln=True)
 
     pdf_output = BytesIO()
@@ -193,18 +199,29 @@ def initialize_user_session(user_email):
         st.session_state[meal_log_key] = load_meal_log(user_email)
 
 def app():
+    # Get current user
     current_user = get_current_user()
+    
+    # Initialize user-specific session data
     initialize_user_session(current_user)
+    
+    # Load datasets
     pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed = load_datasets()
     food_df = merge_datasets(pred_food, daily_nutrition, indian_food, indian_food1, full_nutrition, indian_processed)
+
+    # User-specific session keys
     user_goal_key = f"daily_goal_{current_user}"
     user_meal_log_key = f"meal_log_{current_user}"
 
     st.markdown(st_style, unsafe_allow_html=True)
     st.markdown(head, unsafe_allow_html=True)
+
     st.title("🥗 Diet Tracker for Diabetes")
+    
+    # Display current user info
     st.sidebar.markdown(f"**👤 Logged in as:** {current_user}")
     st.sidebar.markdown("---")
+    
     st.sidebar.subheader("🔧 Settings")
     new_daily_goal = st.sidebar.number_input(
         "Set Daily Calorie Goal", 
@@ -213,11 +230,14 @@ def app():
         value=st.session_state[user_goal_key], 
         step=50
     )
+    
+    # Save goal if it changed
     if new_daily_goal != st.session_state[user_goal_key]:
         st.session_state[user_goal_key] = new_daily_goal
         save_daily_goal(new_daily_goal, current_user)
 
     st.subheader("🍱 Add Your Meal")
+
     serving_sizes = {
         "Custom (grams)": None,
         "1 bowl": 200,
@@ -227,7 +247,9 @@ def app():
         "1 piece": 50,
         "1 slice": 30,
     }
+
     typed_food = st.text_input("Type to search food").strip().lower()
+
     if typed_food:
         matched_foods = food_df[food_df['food'].str.contains(typed_food, na=False)]
         matched_list = matched_foods['food'].tolist()
@@ -253,6 +275,7 @@ def app():
         num_pieces = st.number_input("Number of Pieces", min_value=1, max_value=20, step=1, value=1)
 
     total_quantity = quantity_per_piece * num_pieces
+
     meal_time = st.selectbox("Meal Time", ["Breakfast", "Lunch", "Dinner", "Snack"])
 
     if st.button("Log Meal"):
@@ -317,15 +340,12 @@ def app():
         st.success("All logged meals cleared.")
 
     st.markdown("### 📅 Calendar View")
-    selected_date = st.date_input("Select a date to view logged meals", value=datetime.now(IST).date())
+    selected_date = st.date_input("Select a date to view logged meals", value=date.today())
+
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        try:
-            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_convert(IST)
-            df_selected_date = df[df['timestamp'].dt.date == selected_date]
-        except Exception as e:
-            st.error(f"Error processing calendar view timestamps: {str(e)}")
-            df_selected_date = pd.DataFrame()
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df_selected_date = df[df['timestamp'].dt.date == selected_date]
 
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
@@ -338,17 +358,14 @@ def app():
     st.markdown("### 📊 Daily Summary")
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        try:
-            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_convert(IST)
-            df_today = df[df['timestamp'].dt.date == datetime.now(IST).date()]
-        except Exception as e:
-            st.error(f"Error processing daily summary timestamps: {str(e)}")
-            df_today = pd.DataFrame()
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df_today = df[df['timestamp'].dt.date == date.today()]
 
         if df_today.empty:
             st.info("No meals logged for today.")
         else:
             st.subheader("Today's Logged Meals")
+            # Display table with "Clear This" button for each entry
             for i, row in df_today.sort_values("timestamp", ascending=False).iterrows():
                 cols = st.columns([2, 2, 2, 2, 1])
                 with cols[0]:
@@ -371,10 +388,11 @@ def app():
             total_protein = df_today["protein"].sum() if "protein" in df_today.columns else 0
             total_fat = df_today["fat"].sum() if "fat" in df_today.columns else 0
 
+            # Enhanced calorie goal display with color-coded progress
             col1, col2, col3 = st.columns([3, 1, 1])
             with col1:
                 st.markdown(
-                    f"<h3 style='color: {'green' if total_calories <= st.session_state[user_goal_key] else 'red'};'>Calories Consumed: {total_calories:.2f} kcal</h3>",
+                    f"<h3 style='color: {'green' if total_calories <= st.session_state[user_goal_key] else 'red'};'>Calories Consumed: {total_calories:.2f} kcal</h3>", 
                     unsafe_allow_html=True
                 )
                 progress = min(total_calories / st.session_state[user_goal_key], 1.0)
@@ -384,12 +402,14 @@ def app():
             with col3:
                 st.metric("Remaining Calories", f"{max(st.session_state[user_goal_key] - total_calories, 0):.2f} kcal")
 
+            # Macronutrient Pie Chart
             nutrients = {
                 "Carbohydrates": total_carbs,
                 "Proteins": total_protein,
                 "Fats": total_fat,
             }
             nutrients = {k: v for k, v in nutrients.items() if v and not pd.isna(v)}
+
             if nutrients:
                 fig, ax = plt.subplots()
                 ax.pie(
@@ -405,17 +425,17 @@ def app():
                 st.info("No macronutrient data available to plot.")
 
             st.markdown("#### Calories Consumed per Meal Time")
-            calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast"], ["Lunch"], ["Dinner"], ["Snack"]).fillna(0))
+            calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
             fig2, ax2 = plt.subplots()
-            ax2.bar(calories_mealtime_meals.index, calories_mealtime.values, color='#4a90e2')
+            ax2.bar(calories_mealtime.index, calories_mealtime.values, color='#4a90e2')
             ax2.set_ylabel("Calories (kcal)")
             ax2.set_xlabel("Meal Time")
             ax2.set_ylim(0, max(calories_mealtime.values.max() * 1.2, st.session_state[user_goal_key] * 0.3))
             st.pyplot(fig2)
 
-            st.markdown("### Weekly Calories Consumed Trend (Last 7 Days)"))
-            today = datetime.now(IST).date()
-            past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]
+            st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
+            today = date.today()
+            past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]  # 7 days ascending
             df['date_only'] = df['timestamp'].dt.date
             weekly_calories = df.groupby('date_only')['calories'].sum().reindex(past_week, fill_value=0)
 
@@ -430,155 +450,17 @@ def app():
             ax3.legend()
             st.pyplot(fig3)
 
-            if st.button("Download Daily Report"):
+            # Button to generate PDF report
+            if st.button("Download Daily Report PDF"):
                 pdf_bytes = generate_pdf_report(df_today.to_dict('records'), st.session_state[user_goal_key], current_user)
                 st.download_button(
                     label="Download PDF",
                     data=pdf_bytes,
-                    file_name=f"diet_report_{current_user.replace('@', '_')}_{datetime.now(IST).date()}.pdf",
+                    file_name=f"diet_report_{current_user.replace('@', '_')}_{date.today()}.pdf",
                     mime="application/pdf"
                 )
     else:
         st.info("No meals logged yet today.")
 
 if __name__ == "__main__":
-    app()")
-```
-
-### Changes Made
-1. **Calendar View Fix**:
-   - Modified the date filtering logic:
-     ```python
-     df['timestamp'] = pd.to_datetime(df['timestamp'])
-     df_selected_date = df[df['timestamp'].dt.date == selected_date]
-     ```
-     Changed to:
-     ```
-     df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_convert(IST)
-     df_selected_date = df[df['timestamp'].dt.date == selected_date]
-     ```
-   - Added error handling with `try-except` to prevent crashes.
-   - Changed `st.date_input` default from `date.today()` to `datetime.now(IST).date()` to ensure the default date is IST-based.
-
-2. **Daily Summary Fix**:
-   - Modified the date filtering logic:
-     ```python
-     df['timestamp'] = pd.to_datetime(df['timestamp'])
-     df['today'] = df[df['timestamp'].dt.date == date.today()]
-     ```
-     Changed to:
-     ```python
-     df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_convert(IST)
-     df['today'] = df[df['timestamp'].dt.date == datetime.now(IST).date()]
-     ```
-     - Ensures timestamps are IST-aware and compared against today’s IST date.
-   - Added error handling to display user-friendly messages.
-
-3. **Preserved All Features**:
-   - Meal logging, dataset merging, USDA API calls, manual entry, PDF reports, and all charts (macronutrient pie chart, calories per meal time bar chart, weekly calories trend) remain unchanged.
-   - Only date filtering logic was adjusted to handle timezone-aware timestamps correctly.
-
-4. **Error Handling**:
-   - Added `try-except` blocks around timestamp processing in Calendar View and Daily Summary to prevent crashes and provide feedback if timestamp issues persist.
-
-### Why This Fixes the Issue
-- **Timezone Consistency**:
-  - `df['timestamp'].dt.tz_convert(IST)` ensures all timestamps are in IST, aligning with `datetime.now(IST)` used during meal logging.
-  - `datetime.now(IST).date()` ensures `df['today']` filters for today’s IST date, not the server’s timezone (e.g., UTC).
-  - This fixes the mismatch where meals logged on 2025-09-08 IST were not matching `date.today()` (e.g., 2025-12-07 UTC).
-- **Calendar View**:
-  - Meals now appear for the correct `selected_date`) since `selected_date` (from `st.date_input`) is compared with IST dates.
-- **Plots**:
-  - Since `df['today']` now contains data, the macronutrient pie chart, meal time bar chart, and weekly calories trend plot will be displayed when meals are logged for today.
-
-### Testing Instructions
-1. Replace `app/diet_tracker.py` with the updated version above (artifact ID: a18d3c9e5-5-16f1-143bc-9d59-335f132c5b60d, version: a0a4b3c7e8e9-9f5f2-24c1-1b8b-3d4-f6f7e7890f0c1c3e4).
-2. Redeploy the app on Streamlit Cloud.
-3. Log in with a test user.
-4. In the Diet Tracker tab:
-   - Log a meal (e.g., rasmalai, 200g, Snack).
-   - Verify the success message appears (e.g., “Added 1 piece(s) to (200g) of rasmalai with 271.10 kcal”).
-   - Check the Calendar View:
-     - Select today’s date (2025-12-08) and confirm the meal appears in the table.
-     - Check the Daily Summary:
-       - Confirm the meal appears in the “Today’s” Logged section Meals.
-       - Ensure plots (macronutrient pie chart, meal time bar chart, weekly calories trend) are displayed.
-       - Verify the PDF report includes the meal.
-5. In the Nutrient Analysis tab:
-   - Navigate to confirm the Nutrient Analysis tab to ensure the meal is processed (pie chart, sugar metrics, recommendations).
-   - Confirm no timezone errors occur (per the previous `nutrient_analysis.py` fix).
-6. If issues persist:
-   - Check Streamlit Cloud logs for errors.
-   - Add temporary debug statement in `diet_tracker.py`’s Daily Summary Summary section to inspect timestamps:
-     ```python
-     st.write("Debug: Meal Log Timestamps:", df[['food', 'timestamp']].to_dict('records'))
-     st.write("Debug: Today’s Date:", datetime.now(IST).date())
-     ```
-     Share the debug output for further analysis.
-
-### Additional Notes
-- **No Changes to Other Files**:
-  - `main.py`, `diet_app.py`, `nutrient_analysis.py`, and `history.py` remain unchanged, as the issue is isolated to `diet_tracker.py`.
-- **Timezone on Server**:
-  - Streamlit Cloud likely uses UTC, causing `date.today()` to return 2025-12-07 when it’s 2025-09-08 IST. The fix uses `datetime.now(IST)` to avoid this.
-- **API Keys**:
-  - The USDA API key in `fetch_nutritional_info` and OpenAI API key in `nutrient_analysis.py` should be moved to environment variables in production.
-- **Dependencies**:
-  Ensure `requirements.txt` includes:
-  ```
-  streamlit
-  pandas
-  requests
-  matplotlib
-  fpdf
-  supabase
-  ```
-- **File Structure**:
-  Confirm:
-  ```
-  project_root/
-  ├── main.py
-  ├── app/
-  │   ├── diet_tracker.py
-  │   ├── nutrient_analysis.py
-  │   ├── diet_app.py
-  │   ├── history.py
-  ├── data/
-  │   ├── base.py
-  ├── dataset/
-  │   ├── pred_food.csv
-  │   ├── daily_food_nutrition_dataset.csv
-  │   ├── indian_food.csv
-  │   ├── Indian_Food_DF.csv
-  │   ├── Nutrition_Dataset.csv
-  │   ├── Indian_Food_Nutrition_Processed.csv
-  ├── user_data/
-  ├── supabase_client.py
-  ```
-
-### If the Issue Persists
-If meals still don’t appear in the Calendar View or Daily Summary:
-1. **Verify JSON File**:
-   - Check `user_data/meal_log_<email_hash>.json` to confirm the meal is saved with the correct timestamp (e.g., `2025-12-08T00:29:00+05:30`).
-2. **Debug Output**:
-   - Add the debug statement above and share the timestamps and today’s date.
-3. **Session Log**:
-   - Log out and back in to refresh `st.session_state`.
-4. **Dataset Issue**:
-   - Ensure `dataset/` contains all CSV files, as `food_df` is critical for meal logging.
-5. **Logs**:
-   - Share any errors from Streamlit Cloud logs.
-
-### Previous Context
-- **Nutrient Analysis Fix**:
-  The `nutrient_analysis.py` update (version: 0a79ad35-f2e0c3-33-4c23-9ca0-f3156f48951cf0) fixed a `TypeError` for timezone-aware timestamps, confirming `meal_log` uses IST. This supports the hypothesis that `diet_tracker.py`’s similar timezone handling.
-- **Date Discrepancy**:
-  Your earlier reference to 2025-06-06 may indicate a test case or typo, but the fix uses 2025-12-08 (today’s date) per your prompt.
-
-### Next Steps
-- Deploy the updated `diet_tracker.py`.
-- Test meal logging and verify Calendar View, Daily Summary, and plots.
-- If the Nutrient Analysis tab has issues, confirm `nutrient_analysis.py` is updated.
-- Share debug output or logs if problems persist.
-
-Let me know how this fix works or if you need further assistance with `diet_tracker.py`, `Nutrient_analysis.py`, or other components!
+    app()
