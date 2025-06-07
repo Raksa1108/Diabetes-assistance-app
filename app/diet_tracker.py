@@ -361,14 +361,40 @@ def app():
 
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        
+        # Handle timezone conversion properly
+        if not df.empty:
+            if df['timestamp'].dt.tz is None:
+                # If no timezone, assume it's already in IST
+                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, errors='coerce')
+            else:
+                # Convert to IST
+                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
+        
         df_selected_date = df[df['timestamp'].dt.date == selected_date]
 
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
         else:
             st.subheader(f"Meals for {selected_date.strftime('%Y-%m-%d')}")
-            st.dataframe(df_selected_date[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp", ascending=False))
+            # Display table with "Clear This" button for each entry
+            for i, row in df_selected_date.sort_values("timestamp", ascending=False).iterrows():
+                cols = st.columns([2, 2, 2, 2, 1])
+                with cols[0]:
+                    st.write(row["timestamp"].strftime("%Y-%m-%d %H:%M:%S"))
+                with cols[1]:
+                    st.write(row["meal_time"])
+                with cols[2]:
+                    st.write(row["food"])
+                with cols[3]:
+                    st.write(f"{row['quantity']}g, {row['calories']} kcal")
+                with cols[4]:
+                    if st.button("Clear This", key=f"calendar_clear_{i}_{selected_date}"):
+                        st.session_state[user_meal_log_key] = [meal for j, meal in enumerate(st.session_state[user_meal_log_key]) if j != i]
+                        save_meal_log(st.session_state[user_meal_log_key], current_user)
+                        st.success(f"Removed {row['food']} from log.")
+                        st.rerun()
     else:
         st.info("No meals logged yet.")
 
