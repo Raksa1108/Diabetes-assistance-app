@@ -264,7 +264,7 @@ def app():
         matched_list = matched_foods['food'].tolist()
         if matched_list:
             # Add "None" option to allow API usage
-            options = ["None (Use API instead)"] + matched_list
+            options = ["None"] + matched_list
             selected_food_option = st.selectbox("Select a matching food", options)
             if selected_food_option == "None":
                 selected_food = None
