@@ -1,0 +1,384 @@
+# sugar_tracker.py
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from datetime import datetime, date, timedelta
+import json
+import os
+import hashlib
+from openai import OpenAI
+from data.base import st_style, head
+
+# Timezone import for IST
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+    IST = ZoneInfo("Asia/Kolkata")
+except ImportError:
+    from pytz import timezone
+    IST = timezone("Asia/Kolkata")
+
+# Initialize OpenAI client
+client = OpenAI(api_key="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")
+
+def get_user_filename(user_email):
+    """Generate a safe filename for user's sugar level log based on email."""
+    email_hash = hashlib.md5(user_email.encode()).hexdigest()[:12]
+    return f"sugar_log_{email_hash}.json"
+
+def save_sugar_log(sugar_log, user_email):
+    """Save sugar level log to a JSON file for persistence for specific user."""
+    filename = get_user_filename(user_email)
+    try:
+        os.makedirs("user_data", exist_ok=True)
+        filepath = os.path.join("user_data", filename)
+        
+        with open(filepath, "w") as f:
+            # Convert datetime to string for JSON serialization
+            serializable_log = []
+            for entry in sugar_log:
+                entry_copy = entry.copy()
+                if isinstance(entry_copy['timestamp'], datetime):
+                    entry_copy['timestamp'] = entry_copy['timestamp'].isoformat()
+                serializable_log.append(entry_copy)
+            json.dump(serializable_log, f)
+    except Exception as e:
+        st.error(f"Failed to save sugar level log: {e}")
+
+def load_sugar_log(user_email):
+    """Load sugar level log from a JSON file for specific user."""
+    filename = get_user_filename(user_email)
+    filepath = os.path.join("user_data", filename)
+    
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, "r") as f:
+                data = json.load(f)
+                # Convert timestamp strings back to datetime
+                for entry in data:
+                    if isinstance(entry['timestamp'], str):
+                        try:
+                            entry['timestamp'] = datetime.fromisoformat(entry['timestamp'])
+                        except ValueError:
+                            entry['timestamp'] = pd.to_datetime(entry['timestamp'])
+                return data
+        return []
+    except Exception as e:
+        st.error(f"Failed to load sugar level log: {e}")
+        return []
+
+def get_ai_recommendations(sugar_levels_data, latest_reading):
+    """Get AI-powered recommendations based on sugar levels."""
+    try:
+        # Prepare data summary for AI
+        if not sugar_levels_data:
+            return "Please log some sugar level readings to get personalized recommendations."
+        
+        avg_sugar = np.mean([entry['sugar_level'] for entry in sugar_levels_data[-7:]])  # Last 7 days
+        max_sugar = max([entry['sugar_level'] for entry in sugar_levels_data[-7:]])
+        min_sugar = min([entry['sugar_level'] for entry in sugar_levels_data[-7:]])
+        
+        prompt = f"""Based on the following blood sugar data, provide specific dietary recommendations and preventive measures. 
+        DO NOT mention that you are an AI or ChatGPT. Present the information as medical guidance.
+        
+        Current reading: {latest_reading} mg/dL
+        7-day average: {avg_sugar:.1f} mg/dL
+        7-day highest: {max_sugar} mg/dL
+        7-day lowest: {min_sugar} mg/dL
+        
+        Provide:
+        1. Brief assessment of current sugar levels
+        2. 3-4 specific dietary recommendations
+        3. 2-3 preventive measures
+        4. Lifestyle suggestions
+        
+        Keep the response concise and actionable. Focus on practical advice for diabetes management."""
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Unable to generate recommendations at this time. Please consult with your healthcare provider for personalized advice."
+
+def get_current_user():
+    """Get current user email from session state."""
+    user = st.session_state.get('current_user')
+    if not user or not user.get('email'):
+        st.error("User email not found. Please log in again.")
+        st.stop()
+    return user['email']
+
+def initialize_user_session(user_email):
+    """Initialize session state for user-specific data."""
+    sugar_log_key = f"sugar_log_{user_email}"
+    
+    if sugar_log_key not in st.session_state:
+        st.session_state[sugar_log_key] = load_sugar_log(user_email)
+
+def create_daily_plot(df_today):
+    """Create daily sugar level plot."""
+    if df_today.empty:
+        return None
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Plot sugar levels throughout the day
+    times = df_today['timestamp'].dt.strftime('%H:%M')
+    sugar_levels = df_today['sugar_level']
+    
+    ax.plot(times, sugar_levels, marker='o', linewidth=2, markersize=8, color='#e74c3c')
+    ax.axhline(y=70, color='green', linestyle='--', alpha=0.7, label='Normal Lower (70)')
+    ax.axhline(y=140, color='orange', linestyle='--', alpha=0.7, label='Normal Upper (140)')
+    ax.axhline(y=200, color='red', linestyle='--', alpha=0.7, label='High (200)')
+    
+    ax.set_title('Daily Sugar Levels', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Time', fontsize=12)
+    ax.set_ylabel('Sugar Level (mg/dL)', fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    
+    return fig
+
+def create_weekly_plot(df_week):
+    """Create weekly sugar level plot."""
+    if df_week.empty:
+        return None
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Group by date and calculate daily averages
+    daily_avg = df_week.groupby(df_week['timestamp'].dt.date)['sugar_level'].agg(['mean', 'min', 'max']).reset_index()
+    
+    dates = daily_avg['timestamp']
+    avg_levels = daily_avg['mean']
+    min_levels = daily_avg['min']
+    max_levels = daily_avg['max']
+    
+    # Plot average line
+    ax.plot(dates, avg_levels, marker='o', linewidth=2, markersize=8, color='#3498db', label='Daily Average')
+    
+    # Fill area between min and max
+    ax.fill_between(dates, min_levels, max_levels, alpha=0.3, color='#3498db', label='Daily Range')
+    
+    # Reference lines
+    ax.axhline(y=70, color='green', linestyle='--', alpha=0.7, label='Normal Lower (70)')
+    ax.axhline(y=140, color='orange', linestyle='--', alpha=0.7, label='Normal Upper (140)')
+    ax.axhline(y=200, color='red', linestyle='--', alpha=0.7, label='High (200)')
+    
+    ax.set_title('Weekly Sugar Levels Trend', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Date', fontsize=12)
+    ax.set_ylabel('Sugar Level (mg/dL)', fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    
+    # Format x-axis
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    
+    return fig
+
+def app():
+    # Get current user
+    current_user = get_current_user()
+    
+    # Initialize user-specific session data
+    initialize_user_session(current_user)
+    
+    # User-specific session key
+    user_sugar_log_key = f"sugar_log_{current_user}"
+
+    st.markdown(st_style, unsafe_allow_html=True)
+    st.markdown(head, unsafe_allow_html=True)
+
+    st.title("📊 Sugar Level Tracker")
+    
+    # Display current user info
+    st.sidebar.markdown(f"**👤 Logged in as:** {current_user}")
+    st.sidebar.markdown("---")
+    
+    # Input Section
+    st.subheader("📝 Log Your Sugar Level")
+    
+    col1, col2, col3 = st.columns([2, 2, 1])
+    
+    with col1:
+        sugar_level = st.number_input("Blood Sugar Level (mg/dL)", min_value=30, max_value=600, value=100, step=1)
+    
+    with col2:
+        measurement_time = st.selectbox("Measurement Time", 
+                                      ["Fasting", "Before Breakfast", "After Breakfast", 
+                                       "Before Lunch", "After Lunch", "Before Dinner", 
+                                       "After Dinner", "Bedtime", "Random"])
+    
+    with col3:
+        custom_date = st.date_input("Date", value=date.today())
+    
+    notes = st.text_area("Notes (optional)", placeholder="Any symptoms, medication changes, etc.")
+    
+    if st.button("Log Sugar Level"):
+        log_timestamp = datetime.combine(custom_date, datetime.now().time()).astimezone(IST)
+        
+        st.session_state[user_sugar_log_key].append({
+            "timestamp": log_timestamp,
+            "sugar_level": sugar_level,
+            "measurement_time": measurement_time,
+            "notes": notes,
+            "date": custom_date.isoformat()
+        })
+        
+        save_sugar_log(st.session_state[user_sugar_log_key], current_user)
+        st.success(f"Sugar level {sugar_level} mg/dL logged successfully for {custom_date}!")
+        st.rerun()
+    
+    # Clear all logs button
+    if st.button("🗑️ Clear All Logs"):
+        st.session_state[user_sugar_log_key] = []
+        save_sugar_log(st.session_state[user_sugar_log_key], current_user)
+        st.success("All sugar level logs cleared.")
+        st.rerun()
+    
+    # Display data if available
+    if st.session_state[user_sugar_log_key]:
+        df = pd.DataFrame(st.session_state[user_sugar_log_key])
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        
+        # Handle timezone conversion
+        if not df.empty:
+            if df['timestamp'].dt.tz is None:
+                df['timestamp'] = df['timestamp'].dt.tz_localize(IST)
+            else:
+                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
+        
+        # Today's data
+        today_ist = datetime.now(IST).date()
+        df_today = df[df['timestamp'].dt.date == today_ist].sort_values('timestamp')
+        
+        # Weekly data
+        week_ago = today_ist - timedelta(days=7)
+        df_week = df[df['timestamp'].dt.date >= week_ago].sort_values('timestamp')
+        
+        # Current Status
+        st.markdown("### 📈 Current Status")
+        if not df_today.empty:
+            latest_reading = df_today.iloc[-1]
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Latest Reading", f"{latest_reading['sugar_level']} mg/dL")
+            with col2:
+                st.metric("Time", latest_reading['measurement_time'])
+            with col3:
+                if not df_week.empty:
+                    avg_week = df_week['sugar_level'].mean()
+                    st.metric("7-Day Average", f"{avg_week:.1f} mg/dL")
+            with col4:
+                if len(df_week) > 1:
+                    trend = "↑" if df_week.iloc[-1]['sugar_level'] > df_week.iloc[-2]['sugar_level'] else "↓"
+                    st.metric("Trend", trend)
+        
+        # Plots
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📊 Today's Readings")
+            if not df_today.empty:
+                daily_fig = create_daily_plot(df_today)
+                if daily_fig:
+                    st.pyplot(daily_fig)
+            else:
+                st.info("No readings logged for today.")
+        
+        with col2:
+            st.markdown("### 📈 Weekly Trend")
+            if not df_week.empty:
+                weekly_fig = create_weekly_plot(df_week)
+                if weekly_fig:
+                    st.pyplot(weekly_fig)
+            else:
+                st.info("No readings logged in the past week.")
+        
+        # Recent Readings Table
+        st.markdown("### 🕐 Recent Readings")
+        recent_df = df.sort_values('timestamp', ascending=False).head(10)
+        display_df = recent_df[['timestamp', 'sugar_level', 'measurement_time', 'notes']].copy()
+        display_df['timestamp'] = display_df['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
+        
+        # Add delete buttons
+        for i, row in display_df.iterrows():
+            col1, col2, col3, col4, col5 = st.columns([2, 1, 2, 2, 1])
+            with col1:
+                st.write(row['timestamp'])
+            with col2:
+                st.write(f"{row['sugar_level']} mg/dL")
+            with col3:
+                st.write(row['measurement_time'])
+            with col4:
+                st.write(row['notes'] if row['notes'] else "-")
+            with col5:
+                if st.button("🗑️", key=f"delete_{i}"):
+                    # Remove from session state
+                    original_index = recent_df.index[recent_df.index == i][0]
+                    st.session_state[user_sugar_log_key] = [
+                        entry for j, entry in enumerate(st.session_state[user_sugar_log_key]) 
+                        if j != original_index
+                    ]
+                    save_sugar_log(st.session_state[user_sugar_log_key], current_user)
+                    st.success("Reading deleted!")
+                    st.rerun()
+        
+        # AI Recommendations
+        st.markdown("### 🤖 Health Recommendations")
+        if st.button("Get Personalized Recommendations"):
+            with st.spinner("Analyzing your sugar levels..."):
+                latest_reading = df.iloc[-1]['sugar_level']
+                recommendations = get_ai_recommendations(st.session_state[user_sugar_log_key], latest_reading)
+                
+                st.markdown("#### 💡 Personalized Health Guidance")
+                st.info(recommendations)
+                
+                # Additional quick tips based on latest reading
+                if latest_reading > 200:
+                    st.error("⚠️ Your latest reading is quite high. Please consult your doctor immediately.")
+                elif latest_reading > 140:
+                    st.warning("⚠️ Your latest reading is above normal range. Monitor closely.")
+                elif latest_reading < 70:
+                    st.warning("⚠️ Your latest reading is low. Consider having a healthy snack.")
+                else:
+                    st.success("✅ Your latest reading is within normal range!")
+    
+    else:
+        st.info("No sugar level data logged yet. Start by logging your first reading!")
+        
+        # Show sample recommendations for new users
+        st.markdown("### 💡 General Diabetes Management Tips")
+        st.info("""
+        **Dietary Guidelines:**
+        - Choose complex carbohydrates over simple sugars
+        - Include plenty of fiber-rich vegetables
+        - Monitor portion sizes carefully
+        - Stay hydrated with water
+        
+        **Lifestyle Recommendations:**
+        - Regular physical activity (30 minutes daily)
+        - Consistent meal timing
+        - Regular blood sugar monitoring
+        - Adequate sleep (7-8 hours)
+        
+        **Preventive Measures:**
+        - Take medications as prescribed
+        - Regular check-ups with healthcare provider
+        - Keep a food and activity diary
+        - Learn to recognize symptoms of high/low blood sugar
+        """)
+
+if __name__ == "__main__":
+    app()
