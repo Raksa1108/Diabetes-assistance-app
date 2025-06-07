@@ -361,48 +361,14 @@ def app():
 
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        
-        # Convert timestamp to datetime with proper IST handling
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-        
-        # Handle timezone conversion properly
-        if not df.empty:
-            # Check if timezone info exists
-            if df['timestamp'].dt.tz is None:
-                # If no timezone, assume it's already in IST
-                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, errors='coerce')
-            else:
-                # Convert to IST
-                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
-        
-        # Create date column for filtering (in IST)
-        df['meal_date'] = df['timestamp'].dt.date
-        
-        # Filter meals for selected date
-        df_selected_date = df[df['meal_date'] == selected_date]
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df_selected_date = df[df['timestamp'].dt.date == selected_date]
 
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
         else:
             st.subheader(f"Meals for {selected_date.strftime('%Y-%m-%d')}")
-            
-            # Prepare display dataframe
-            display_df = df_selected_date.copy()
-            display_df['time'] = display_df['timestamp'].dt.strftime('%H:%M:%S')
-            display_df = display_df[["time", "meal_time", "food", "quantity", "calories"]].sort_values("time", ascending=False)
-            display_df.columns = ["Time", "Meal Time", "Food", "Quantity (g)", "Calories"]
-            
-            st.dataframe(display_df, use_container_width=True)
-            
-            # Show summary for selected date
-            total_calories_selected = df_selected_date["calories"].sum()
-            total_items = len(df_selected_date)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(f"Total Calories", f"{total_calories_selected:.1f} kcal")
-            with col2:
-                st.metric("Total Items Logged", total_items)
+            st.dataframe(df_selected_date[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp", ascending=False))
     else:
         st.info("No meals logged yet.")
 
