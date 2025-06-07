@@ -292,19 +292,14 @@ def app():
 
     meal_time = st.selectbox("Meal Time", ["Breakfast", "Lunch", "Dinner", "Snack"])
 
-    # Add option to set custom date for meal logging (for testing past dates)
-    custom_log_date = st.date_input("Log meal for date", value=date.today(), key="log_date")
-
     if st.button("Log Meal"):
         if not typed_food:
             st.error("Please type a food name to log.")
         elif selected_food:
             best_match = food_df[food_df['food'] == selected_food].iloc[0]
             calories = best_match["calories"] * (total_quantity / 100)
-            # Use custom_log_date for timestamp
-            log_timestamp = datetime.combine(custom_log_date, datetime.min.time()).astimezone(IST)
             st.session_state[user_meal_log_key].append({
-                "timestamp": log_timestamp,
+                "timestamp": datetime.now(IST),
                 "meal_time": meal_time,
                 "food": best_match["food"],
                 "quantity": total_quantity,
@@ -315,15 +310,13 @@ def app():
                 "source": "dataset"
             })
             save_meal_log(st.session_state[user_meal_log_key], current_user)
-            st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal for {custom_log_date}.")
+            st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {best_match['food']} with {calories:.2f} kcal.")
         else:
             cal, carbs, protein, fat = fetch_nutritional_info(typed_food)
             if cal and carbs is not None:
                 total_calories = cal * (total_quantity / 100)
-                # Use custom_log_date for timestamp
-                log_timestamp = datetime.combine(custom_log_date, datetime.min.time()).astimezone(IST)
                 st.session_state[user_meal_log_key].append({
-                    "timestamp": log_timestamp,
+                    "timestamp": datetime.now(IST),
                     "meal_time": meal_time,
                     "food": typed_food,
                     "quantity": total_quantity,
@@ -334,7 +327,7 @@ def app():
                     "source": "API"
                 })
                 save_meal_log(st.session_state[user_meal_log_key], current_user)
-                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal for {custom_log_date}.")
+                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal.")
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
                 calories_input = st.number_input("Calories per 100g", min_value=0.0, key="manual_cal")
@@ -342,10 +335,8 @@ def app():
                 protein_input = st.number_input("Protein per 100g", min_value=0.0, key="manual_protein")
                 fat_input = st.number_input("Fat per 100g", min_value=0.0, key="manual_fat")
                 if calories_input > 0:
-                    # Use custom_log_date for timestamp
-                    log_timestamp = datetime.combine(custom_log_date, datetime.min.time()).astimezone(IST)
                     st.session_state[user_meal_log_key].append({
-                        "timestamp": log_timestamp,
+                        "timestamp": datetime.now(IST),
                         "meal_time": meal_time,
                         "food": typed_food,
                         "quantity": total_quantity,
@@ -356,7 +347,7 @@ def app():
                         "source": "manual"
                     })
                     save_meal_log(st.session_state[user_meal_log_key], current_user)
-                    st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually for {custom_log_date}.")
+                    st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} manually.")
                 else:
                     st.info("Enter calories to log manually.")
 
@@ -365,50 +356,19 @@ def app():
         save_meal_log(st.session_state[user_meal_log_key], current_user)
         st.success("All logged meals cleared.")
 
-    # Debug option to view raw meal log
-    if st.checkbox("Show Raw Meal Log for Debugging"):
-        st.write("Raw Meal Log:", st.session_state[user_meal_log_key])
-
     st.markdown("### 📅 Calendar View")
     selected_date = st.date_input("Select a date to view logged meals", value=date.today())
 
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-        
-        # Handle timezone conversion properly
-        if not df.empty:
-            if df['timestamp'].dt.tz is None:
-                # If no timezone, assume it's already in IST
-                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, ambiguous='raise', nonexistent='raise')
-            else:
-                # Convert to IST
-                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
-        
-        # Filter meals for the selected date
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
         df_selected_date = df[df['timestamp'].dt.date == selected_date]
 
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
         else:
             st.subheader(f"Meals for {selected_date.strftime('%Y-%m-%d')}")
-            # Display table with "Clear This" button for each entry
-            for i, row in df_selected_date.sort_values("timestamp", ascending=False).iterrows():
-                cols = st.columns([2, 2, 2, 2, 1])
-                with cols[0]:
-                    st.write(row["timestamp"].strftime("%Y-%m-%d %H:%M:%S"))
-                with cols[1]:
-                    st.write(row["meal_time"])
-                with cols[2]:
-                    st.write(row["food"])
-                with cols[3]:
-                    st.write(f"{row['quantity']}g, {row['calories']} kcal")
-                with cols[4]:
-                    if st.button("Clear This", key=f"calendar_clear_{i}_{selected_date}"):
-                        st.session_state[user_meal_log_key] = [meal for j, meal in enumerate(st.session_state[user_meal_log_key]) if j != i]
-                        save_meal_log(st.session_state[user_meal_log_key], current_user)
-                        st.success(f"Removed {row['food']} from log.")
-                        st.rerun()
+            st.dataframe(df_selected_date[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp", ascending=False))
     else:
         st.info("No meals logged yet.")
 
