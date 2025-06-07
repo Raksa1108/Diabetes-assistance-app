@@ -95,7 +95,8 @@ def save_meal_log(meal_log, user_email):
             serializable_log = []
             for meal in meal_log:
                 meal_copy = meal.copy()
-                meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
+                if isinstance(meal_copy['timestamp'], datetime):
+                    meal_copy['timestamp'] = meal_copy['timestamp'].isoformat()
                 serializable_log.append(meal_copy)
             json.dump(serializable_log, f)
     except Exception as e:
@@ -112,7 +113,12 @@ def load_meal_log(user_email):
                 data = json.load(f)
                 # Convert timestamp strings back to datetime
                 for meal in data:
-                    meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
+                    if isinstance(meal['timestamp'], str):
+                        try:
+                            meal['timestamp'] = datetime.fromisoformat(meal['timestamp'])
+                        except ValueError:
+                            # Fallback for different datetime formats
+                            meal['timestamp'] = pd.to_datetime(meal['timestamp'])
                 return data
         return []
     except Exception as e:
@@ -166,7 +172,10 @@ def generate_pdf_report(meal_log, daily_goal, user_email):
     pdf.cell(0, 10, "Logged Meals:", ln=True)
     pdf.set_font("Arial", size=10)
     for meal in meal_log:
-        meal_text = f"{meal['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal"
+        timestamp = meal['timestamp']
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        meal_text = f"{timestamp.strftime('%Y-%m-%d %H:%M:%S')} - {meal['meal_time']} - {meal['food']} - {meal['calories']} kcal"
         # Ensure text is encoded properly to handle special characters
         try:
             pdf.cell(0, 8, meal_text, ln=True)
@@ -180,15 +189,12 @@ def generate_pdf_report(meal_log, daily_goal, user_email):
     return pdf_output
 
 def get_current_user():
-    """Get current user email from session state."""
-    # Check if user is logged in (this should be set by your main app login system)
-    if 'user_email' in st.session_state and st.session_state.user_email:
-        return st.session_state.user_email
-    else:
-        # If no user is found, show error and stop execution
-        st.error("⚠️ User not logged in. Please login to access the Diet Tracker.")
-        st.info("This feature requires user authentication. Please login through the main application.")
+    """Get current user email from session state (history.py style)."""
+    user = st.session_state.get('current_user')
+    if not user or not user.get('email'):
+        st.error("User email not found. Please log in again.")
         st.stop()
+    return user['email']
 
 def initialize_user_session(user_email):
     """Initialize session state for user-specific data."""
@@ -257,10 +263,15 @@ def app():
         matched_foods = food_df[food_df['food'].str.contains(typed_food, na=False)]
         matched_list = matched_foods['food'].tolist()
         if matched_list:
-            selected_food = st.selectbox("Select a matching food", matched_list)
+            # Add "None" option to allow API usage
+            options = ["None"] + matched_list
+            selected_food_option = st.selectbox("Select a matching food", options)
+            if selected_food_option == "None":
+                selected_food = None
+            else:
+                selected_food = selected_food_option
         else:
             selected_food = None
-            st.warning("No matches found in datasets.")
     else:
         matched_list = []
         selected_food = None
@@ -293,6 +304,9 @@ def app():
                 "food": best_match["food"],
                 "quantity": total_quantity,
                 "calories": round(calories, 2),
+                "carbs": 0,
+                "protein": 0,
+                "fat": 0,
                 "source": "dataset"
             })
             save_meal_log(st.session_state[user_meal_log_key], current_user)
@@ -313,7 +327,7 @@ def app():
                     "source": "API"
                 })
                 save_meal_log(st.session_state[user_meal_log_key], current_user)
-                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal from API.")
+                st.success(f"Added {num_pieces} piece(s) ({total_quantity}g) of {typed_food} = {total_calories:.2f} kcal.")
             else:
                 st.warning("Food not found in database or API. Please enter nutrition manually.")
                 calories_input = st.number_input("Calories per 100g", min_value=0.0, key="manual_cal")
@@ -347,22 +361,70 @@ def app():
 
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df_selected_date = df[df['timestamp'].dt.date == selected_date]
+        
+        # Convert timestamp to datetime with proper IST handling
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        
+        # Handle timezone conversion properly
+        if not df.empty:
+            # Check if timezone info exists
+            if df['timestamp'].dt.tz is None:
+                # If no timezone, assume it's already in IST
+                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, errors='coerce')
+            else:
+                # Convert to IST
+                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
+        
+        # Create date column for filtering (in IST)
+        df['meal_date'] = df['timestamp'].dt.date
+        
+        # Filter meals for selected date
+        df_selected_date = df[df['meal_date'] == selected_date]
 
         if df_selected_date.empty:
             st.info(f"No meals logged for {selected_date.strftime('%Y-%m-%d')}.")
         else:
             st.subheader(f"Meals for {selected_date.strftime('%Y-%m-%d')}")
-            st.dataframe(df_selected_date[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp", ascending=False))
+            
+            # Prepare display dataframe
+            display_df = df_selected_date.copy()
+            display_df['time'] = display_df['timestamp'].dt.strftime('%H:%M:%S')
+            display_df = display_df[["time", "meal_time", "food", "quantity", "calories"]].sort_values("time", ascending=False)
+            display_df.columns = ["Time", "Meal Time", "Food", "Quantity (g)", "Calories"]
+            
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Show summary for selected date
+            total_calories_selected = df_selected_date["calories"].sum()
+            total_items = len(df_selected_date)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(f"Total Calories", f"{total_calories_selected:.1f} kcal")
+            with col2:
+                st.metric("Total Items Logged", total_items)
     else:
         st.info("No meals logged yet.")
 
     st.markdown("### 📊 Daily Summary")
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df_today = df[df['timestamp'].dt.date == date.today()]
+        
+        # Convert timestamp to datetime with proper IST handling
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        
+        # Handle timezone conversion properly
+        if not df.empty:
+            if df['timestamp'].dt.tz is None:
+                # If no timezone, assume it's already in IST
+                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, errors='coerce')
+            else:
+                # Convert to IST
+                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
+        
+        # Get today's date in IST
+        today_ist = datetime.now(IST).date()
+        df_today = df[df['timestamp'].dt.date == today_ist]
 
         if df_today.empty:
             st.info("No meals logged for today.")
@@ -424,8 +486,6 @@ def app():
                 )
                 ax.axis('equal')
                 st.pyplot(fig)
-            else:
-                st.info("No macronutrient data available to plot.")
 
             st.markdown("#### Calories Consumed per Meal Time")
             calories_mealtime = df_today.groupby("meal_time")["calories"].sum().reindex(["Breakfast", "Lunch", "Dinner", "Snack"]).fillna(0)
@@ -437,10 +497,16 @@ def app():
             st.pyplot(fig2)
 
             st.markdown("#### Weekly Calories Consumed Trend (Last 7 Days)")
-            today = date.today()
+            today = datetime.now(IST).date()
             past_week = [today - timedelta(days=i) for i in range(6, -1, -1)]  # 7 days ascending
+
+            # Simplified date handling for weekly trend
             df['date_only'] = df['timestamp'].dt.date
-            weekly_calories = df.groupby('date_only')['calories'].sum().reindex(past_week, fill_value=0)
+
+            # Group by date_only and sum calories
+            weekly_calories = df.groupby('date_only')['calories'].sum()
+            # Reindex to ensure every day is present (missing days will be zero)
+            weekly_calories = weekly_calories.reindex(past_week, fill_value=0)
 
             fig3, ax3 = plt.subplots()
             ax3.plot(past_week, weekly_calories.values, marker='o', linestyle='-', color='#ff7f0e')
