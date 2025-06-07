@@ -357,20 +357,14 @@ def app():
     if st.session_state[user_meal_log_key]:
         df = pd.DataFrame(st.session_state[user_meal_log_key])
         
-        # Convert timestamp to datetime and handle timezone
+        # Consistent timezone handling (same as in Daily Summary)
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        if df['timestamp'].dt.tz is None or str(df['timestamp'].dt.tz) == 'None':
+            df['timestamp'] = df['timestamp'].dt.tz_localize(IST)
+        else:
+            df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
         
-        # Handle timezone conversion
-        if not df.empty:
-            # Check if timezone info exists
-            if df['timestamp'].dt.tz is None:
-                # If no timezone, assume it's already in IST
-                df['timestamp'] = df['timestamp'].dt.tz_localize(IST, errors='coerce')
-            else:
-                # Convert to IST
-                df['timestamp'] = df['timestamp'].dt.tz_convert(IST)
-        
-        # Convert selected_date to datetime for comparison
+        # Convert selected_date to datetime.date for comparison
         selected_datetime = pd.to_datetime(selected_date).date()
         
         # Create date column for filtering
@@ -403,6 +397,7 @@ def app():
                 st.metric("Total Items Logged", total_items)
     else:
         st.info("No meals logged yet.")
+
 
 
     st.markdown("### 📊 Daily Summary")
