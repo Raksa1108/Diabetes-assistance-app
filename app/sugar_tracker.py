@@ -90,12 +90,39 @@ def detect_spike_downfall(sugar_log, food_log, window_minutes=120):
     # Find recent foods within time window
     recent_foods = []
     if food_log:
-        current_time = pd.to_datetime(current['timestamp'])
-        for food in food_log:
-            food_time = pd.to_datetime(food['timestamp'])
-            time_diff_minutes = (current_time - food_time).total_seconds() / 60
-            if 0 <= time_diff_minutes <= window_minutes:
-                recent_foods.append(food)
+        try:
+            # Ensure current timestamp is a datetime object
+            if isinstance(current['timestamp'], str):
+                current_time = pd.to_datetime(current['timestamp'])
+            else:
+                current_time = current['timestamp']
+            
+            # Convert to pandas Timestamp to handle timezone issues
+            current_time = pd.Timestamp(current_time)
+            
+            for food in food_log:
+                try:
+                    # Ensure food timestamp is a datetime object
+                    if isinstance(food['timestamp'], str):
+                        food_time = pd.to_datetime(food['timestamp'])
+                    else:
+                        food_time = food['timestamp']
+                    
+                    # Convert to pandas Timestamp to handle timezone issues
+                    food_time = pd.Timestamp(food_time)
+                    
+                    # Calculate time difference safely
+                    time_diff = current_time - food_time
+                    time_diff_minutes = time_diff.total_seconds() / 60
+                    
+                    if 0 <= time_diff_minutes <= window_minutes:
+                        recent_foods.append(food)
+                except (ValueError, TypeError, AttributeError) as e:
+                    # Skip this food entry if timestamp conversion fails
+                    continue
+        except (ValueError, TypeError, AttributeError) as e:
+            # If timestamp processing fails entirely, return empty recent_foods
+            recent_foods = []
     
     # Classify the change
     if delta > 25:
@@ -376,26 +403,38 @@ def app():
     st.subheader("🍽️ Today's Food Log")
     
     if meal_log:
-        today_meals = [m for m in meal_log if pd.to_datetime(m["timestamp"]).date() == date.today()]
-        
-        if today_meals:
-            df_meals = pd.DataFrame(today_meals)
-            df_meals['timestamp'] = pd.to_datetime(df_meals['timestamp'])
-            df_meals = df_meals.sort_values("timestamp", ascending=False)
+        try:
+            today_meals = []
+            for m in meal_log:
+                try:
+                    # Safely convert timestamp to date
+                    meal_timestamp = pd.to_datetime(m["timestamp"])
+                    if meal_timestamp.date() == date.today():
+                        today_meals.append(m)
+                except (ValueError, TypeError, KeyError):
+                    # Skip meals with invalid timestamps
+                    continue
             
-            # Display in a nice format
-            for _, meal in df_meals.iterrows():
-                col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-                with col1:
-                    st.write(f"🍴 **{meal['food']}**")
-                with col2:
-                    st.write(f"⏰ {meal['meal_time']}")
-                with col3:
-                    st.write(f"📏 {meal['quantity']}g")
-                with col4:
-                    st.write(f"🔥 {meal['calories']} kcal")
-        else:
-            st.info("No meals logged for today. Visit the Diet Tracker to log your meals!")
+            if today_meals:
+                df_meals = pd.DataFrame(today_meals)
+                df_meals['timestamp'] = pd.to_datetime(df_meals['timestamp'])
+                df_meals = df_meals.sort_values("timestamp", ascending=False)
+                
+                # Display in a nice format
+                for _, meal in df_meals.iterrows():
+                    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                    with col1:
+                        st.write(f"🍴 **{meal.get('food', 'Unknown Food')}**")
+                    with col2:
+                        st.write(f"⏰ {meal.get('meal_time', 'Unknown Time')}")
+                    with col3:
+                        st.write(f"📏 {meal.get('quantity', 'Unknown')}g")
+                    with col4:
+                        st.write(f"🔥 {meal.get('calories', 'Unknown')} kcal")
+            else:
+                st.info("No meals logged for today. Visit the Diet Tracker to log your meals!")
+        except Exception as e:
+            st.info("No meals logged yet. Visit the Diet Tracker to start tracking your food intake!")
     else:
         st.info("No meals logged yet. Visit the Diet Tracker to start tracking your food intake!")
     
