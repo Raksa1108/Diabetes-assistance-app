@@ -10,15 +10,22 @@ from openai import OpenAI
 from app.diet_tracker import load_meal_log, get_current_user
 from app.history import get_user_by_email  # Import user data function
 
-# --- OpenAI API Setup ---
-# Note: In production, use environment variables or Streamlit secrets for API keys
-try:
-    API_KEY = st.secrets["openai"]["api_key"]
-except:
-    # Fallback - but this should be moved to environment variables
-    API_KEY = "your-openai-api-key-here"  # Replace with your actual key or use st.secrets
+# --- OpenAI API Setup with Secure Key Management ---
+def get_openai_client():
+    """Securely initialize OpenAI client using Streamlit secrets."""
+    try:
+        # Try to get API key from Streamlit secrets
+        api_key = st.secrets["openai"]["api_key"]
+        return OpenAI(api_key=api_key)
+    except KeyError:
+        st.error("❌ OpenAI API key not found in secrets. Please configure your API key in Streamlit secrets.")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Error initializing OpenAI client: {str(e)}")
+        st.stop()
 
-client = OpenAI(api_key=API_KEY)
+# Initialize OpenAI client
+client = get_openai_client()
 
 # --- File Helper Functions ---
 def get_user_sugar_filename(user_email):
@@ -171,6 +178,7 @@ def get_preventive_measures(sugar_level, food_log, spike_status, delta, recent_f
         )
         return completion.choices[0].message.content.strip()
     except Exception as e:
+        st.error(f"Error generating AI advice: {str(e)}")
         return f"Unable to generate personalized advice at this time. General tip: Monitor your blood sugar regularly and maintain a balanced diet. Current reading: {sugar_level} mg/dL."
 
 def get_food_sugar_impact(food_log):
@@ -362,7 +370,7 @@ def app():
                 st.info(f"🍽️ **Food Impact Analysis:** {food_impact}")
                 
             except Exception as e:
-                st.warning("⚠️ Unable to generate personalized advice at this time. Please ensure your OpenAI API key is configured correctly.")
+                st.warning("⚠️ Unable to generate personalized advice at this time. Please check your API configuration.")
     
     # --- Today's Food Log Display ---
     st.subheader("🍽️ Today's Food Log")
