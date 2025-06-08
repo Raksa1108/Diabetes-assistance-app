@@ -6,74 +6,91 @@ import json
 from datetime import datetime, date, time
 from openai import OpenAI
 
+# Import functions from other modules
 from app.diet_tracker import load_meal_log, get_current_user
-
-API_KEY = "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"
-client = OpenAI(api_key=API_KEY)
-
-def get_user_sugar_filename(user_email):
-    import hashlib
-    email_hash = hashlib.md5(user_email.encode()).hexdigest()[:12]
-    return f"sugar_log_{email_hash}.json"
-import streamlit as st
-import pandas as pd
-import os
-import json
-from datetime import datetime, date, time
-from openai import OpenAI
-
-from app.diet_tracker import load_meal_log, get_current_user
-from app.history import get_diabetes_prediction, get_history_advice  # Adjust import if needed
+from app.history import get_user_by_email  # Import user data function
 
 # --- OpenAI API Setup ---
-API_KEY = "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"
+# Note: In production, use environment variables or Streamlit secrets for API keys
+try:
+    API_KEY = st.secrets["openai"]["api_key"]
+except:
+    # Fallback - but this should be moved to environment variables
+    API_KEY = "your-openai-api-key-here"  # Replace with your actual key or use st.secrets
+
 client = OpenAI(api_key=API_KEY)
 
-# --- File Helpers ---
+# --- File Helper Functions ---
 def get_user_sugar_filename(user_email):
+    """Generate a safe filename for user's sugar log based on email."""
     import hashlib
     email_hash = hashlib.md5(user_email.encode()).hexdigest()[:12]
     return f"sugar_log_{email_hash}.json"
 
 def save_sugar_log(sugar_log, user_email):
+    """Save sugar log to a JSON file for persistence for specific user."""
     filename = get_user_sugar_filename(user_email)
-    os.makedirs("user_data", exist_ok=True)
-    filepath = os.path.join("user_data", filename)
-    serializable_log = []
-    for entry in sugar_log:
-        entry_copy = entry.copy()
-        if isinstance(entry_copy['timestamp'], datetime):
-            entry_copy['timestamp'] = entry_copy['timestamp'].isoformat()
-        serializable_log.append(entry_copy)
-    with open(filepath, "w") as f:
-        json.dump(serializable_log, f)
+    try:
+        os.makedirs("user_data", exist_ok=True)
+        filepath = os.path.join("user_data", filename)
+        
+        # Convert datetime to string for JSON serialization
+        serializable_log = []
+        for entry in sugar_log:
+            entry_copy = entry.copy()
+            if isinstance(entry_copy['timestamp'], datetime):
+                entry_copy['timestamp'] = entry_copy['timestamp'].isoformat()
+            serializable_log.append(entry_copy)
+        
+        with open(filepath, "w") as f:
+            json.dump(serializable_log, f)
+    except Exception as e:
+        st.error(f"Failed to save sugar log: {e}")
 
 def load_sugar_log(user_email):
+    """Load sugar log from a JSON file for specific user."""
     filename = get_user_sugar_filename(user_email)
     filepath = os.path.join("user_data", filename)
-    if os.path.exists(filepath):
-        with open(filepath, "r") as f:
-            data = json.load(f)
-            for entry in data:
-                if isinstance(entry['timestamp'], str):
-                    try:
-                        entry['timestamp'] = datetime.fromisoformat(entry['timestamp'])
-                    except Exception:
-                        entry['timestamp'] = pd.to_datetime(entry['timestamp'])
-            return data
-    return []
+    
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, "r") as f:
+                data = json.load(f)
+                # Convert timestamp strings back to datetime
+                for entry in data:
+                    if isinstance(entry['timestamp'], str):
+                        try:
+                            entry['timestamp'] = datetime.fromisoformat(entry['timestamp'])
+                        except ValueError:
+                            # Fallback for different datetime formats
+                            entry['timestamp'] = pd.to_datetime(entry['timestamp'])
+                return data
+        return []
+    except Exception as e:
+        st.error(f"Failed to load sugar log: {e}")
+        return []
 
-# --- Spike/Downfall Detection ---
+# --- Advanced Analytics Functions ---
 def detect_spike_downfall(sugar_log, food_log, window_minutes=120):
+    """Detect if current sugar level represents a spike or downfall."""
     if len(sugar_log) < 2:
-        return "first", 0, []
+        return "first_reading", 0, []
+    
     current = sugar_log[-1]
     previous = sugar_log[-2]
     delta = current['sugar_level'] - previous['sugar_level']
-    recent_foods = [
-        f for f in food_log
-        if 0 <= (pd.to_datetime(current['timestamp']) - pd.to_datetime(f['timestamp'])).total_seconds() / 60 <= window_minutes
-    ]
+    
+    # Find recent foods within time window
+    recent_foods = []
+    if food_log:
+        current_time = pd.to_datetime(current['timestamp'])
+        for food in food_log:
+            food_time = pd.to_datetime(food['timestamp'])
+            time_diff_minutes = (current_time - food_time).total_seconds() / 60
+            if 0 <= time_diff_minutes <= window_minutes:
+                recent_foods.append(food)
+    
+    # Classify the change
     if delta > 25:
         return "spike", delta, recent_foods
     elif delta < -20:
@@ -81,221 +98,329 @@ def detect_spike_downfall(sugar_log, food_log, window_minutes=120):
     else:
         return "stable", delta, recent_foods
 
-# --- Preventive Measures via OpenAI (never mention API) ---
-def get_preventive_measures(
-    sugar_level, food_log, spike_status, delta, recent_foods, prediction, history_advice
-):
-    meal_str = ', '.join([f['food'] for f in food_log]) if food_log else "none"
-    recent_str = ', '.join([f['food'] for f in recent_foods]) if recent_foods else "none"
-    prompt = (
-        f"User's current blood sugar: {sugar_level} mg/dL.\n"
-        f"Change from last reading: {delta:+.0f} mg/dL ({spike_status}).\n"
-        f"Recent foods: {recent_str}.\n"
-        f"Overall food habits: {meal_str}.\n"
-        f"Diabetes risk prediction: {prediction}.\n"
-        f"History-based advice: {history_advice}.\n"
-        "Give 2-3 concise, practical tips to manage blood sugar and prevent spikes or drops. "
-        "If there's a spike, suggest when to stop eating sugary foods. Use simple, encouraging language "
-        "with no medical jargon and never mention AI or API."
-    )
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        store=True,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return completion.choices[0].message.content.strip()
+def get_sugar_trend_analysis(sugar_log, days=7):
+    """Analyze sugar trends over the past few days."""
+    if not sugar_log:
+        return None
+    
+    df = pd.DataFrame(sugar_log)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = df.sort_values('timestamp')
+    
+    # Filter to last N days
+    cutoff_date = datetime.now() - pd.Timedelta(days=days)
+    recent_df = df[df['timestamp'] >= cutoff_date]
+    
+    if recent_df.empty:
+        return None
+    
+    analysis = {
+        'avg_sugar': recent_df['sugar_level'].mean(),
+        'max_sugar': recent_df['sugar_level'].max(),
+        'min_sugar': recent_df['sugar_level'].min(),
+        'readings_count': len(recent_df),
+        'high_readings': len(recent_df[recent_df['sugar_level'] > 140]),
+        'low_readings': len(recent_df[recent_df['sugar_level'] < 70]),
+        'trend': 'improving' if recent_df['sugar_level'].iloc[-3:].mean() < recent_df['sugar_level'].iloc[:-3].mean() else 'concerning'
+    }
+    
+    return analysis
+
+# --- AI-Powered Advice Generation ---
+def get_preventive_measures(sugar_level, food_log, spike_status, delta, recent_foods, user_profile=None, trend_analysis=None):
+    """Generate personalized preventive measures using AI."""
+    
+    # Prepare context information
+    meal_str = ', '.join([f"{f['food']} ({f['calories']} kcal)" for f in food_log[-5:]]) if food_log else "none logged today"
+    recent_str = ', '.join([f"{f['food']} ({f.get('calories', 'unknown')} kcal)" for f in recent_foods]) if recent_foods else "none in past 2 hours"
+    
+    # Add user profile context if available
+    profile_str = ""
+    if user_profile:
+        profile_str = f"User profile: Age {user_profile.get('age', 'unknown')}, Weight {user_profile.get('weight', 'unknown')} kg, Height {user_profile.get('height', 'unknown')} cm. "
+    
+    # Add trend analysis if available
+    trend_str = ""
+    if trend_analysis:
+        trend_str = f"Recent 7-day analysis: Average sugar {trend_analysis['avg_sugar']:.1f} mg/dL, {trend_analysis['high_readings']} high readings, {trend_analysis['low_readings']} low readings, trend is {trend_analysis['trend']}. "
+    
+    prompt = f"""
+    Current blood sugar: {sugar_level} mg/dL
+    Change from last reading: {delta:+.1f} mg/dL ({spike_status})
+    Recent foods (past 2 hours): {recent_str}
+    Recent meals today: {meal_str}
+    {profile_str}
+    {trend_str}
+    
+    Provide 3-4 specific, actionable tips for managing blood sugar based on this data:
+    1. Immediate actions if needed
+    2. Dietary recommendations
+    3. Lifestyle suggestions
+    4. When to seek medical attention (if applicable)
+    
+    Use encouraging, clear language. Avoid medical jargon. Never mention AI or API usage.
+    Focus on practical, diabetes-friendly advice.
+    """
+    
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.7
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Unable to generate personalized advice at this time. General tip: Monitor your blood sugar regularly and maintain a balanced diet. Current reading: {sugar_level} mg/dL."
+
+def get_food_sugar_impact(food_log):
+    """Analyze which foods might be causing sugar spikes."""
+    if not food_log:
+        return "No food data available for analysis."
+    
+    # Group foods by type and analyze calorie/carb content
+    high_impact_foods = []
+    for food in food_log[-10:]:  # Last 10 meals
+        calories = food.get('calories', 0)
+        carbs = food.get('carbs', 0)
+        
+        # Flag potentially high-impact foods
+        if calories > 300 or carbs > 30:
+            high_impact_foods.append(f"{food['food']} ({calories} kcal)")
+    
+    if high_impact_foods:
+        return f"High-impact foods recently consumed: {', '.join(high_impact_foods[:5])}. Consider smaller portions or healthier alternatives."
+    else:
+        return "Your recent food choices appear to be diabetes-friendly. Keep up the good work!"
 
 # --- Main Streamlit App ---
 def app():
     st.title("🩸 Sugar Tracker")
+    st.markdown("Track your blood sugar levels and get personalized insights.")
+    
+    # Get current user
     user_email = get_current_user()
+    
+    # Load user data and logs
     sugar_log = load_sugar_log(user_email)
     meal_log = load_meal_log(user_email)
-
-    # --- Sugar Log Input ---
-    st.subheader("Log Your Blood Sugar")
+    
+    # Try to get user profile for enhanced recommendations
+    user_profile = None
+    try:
+        user_profile = get_user_by_email(user_email)
+    except:
+        pass  # Profile not available, continue without it
+    
+    # --- Sugar Level Input Section ---
+    st.subheader("📊 Log Your Blood Sugar")
+    
     with st.form("sugar_log_form"):
-        sugar_level = st.number_input("Blood Sugar (mg/dL)", min_value=40, max_value=600, step=1)
-        date_val = st.date_input("Date", value=date.today())
-        time_val = st.time_input("Time", value=datetime.now().time())
-        submitted = st.form_submit_button("Add Sugar Log")
+        col1, col2, col3 = st.columns([2, 1, 1])
+        
+        with col1:
+            sugar_level = st.number_input(
+                "Blood Sugar Level (mg/dL)", 
+                min_value=40, 
+                max_value=600, 
+                step=1,
+                help="Normal range: 80-130 mg/dL (before meals), <180 mg/dL (after meals)"
+            )
+        
+        with col2:
+            date_val = st.date_input("Date", value=date.today())
+        
+        with col3:
+            time_val = st.time_input("Time", value=datetime.now().time())
+        
+        # Optional notes
+        notes = st.text_input("Notes (optional)", placeholder="e.g., before/after meal, feeling symptoms")
+        
+        submitted = st.form_submit_button("🔄 Add Sugar Reading", use_container_width=True)
+        
         if submitted and sugar_level:
             timestamp = datetime.combine(date_val, time_val)
-            sugar_log.append({
+            new_entry = {
                 "timestamp": timestamp,
-                "sugar_level": sugar_level
-            })
+                "sugar_level": sugar_level,
+                "notes": notes
+            }
+            sugar_log.append(new_entry)
             save_sugar_log(sugar_log, user_email)
-            st.success(f"Added sugar log: {sugar_level} mg/dL at {timestamp.strftime('%Y-%m-%d %H:%M')}")
-            st.experimental_rerun()
+            
+            # Determine status color
+            status_color = "🟢" if 80 <= sugar_level <= 180 else "🟡" if sugar_level < 80 or sugar_level <= 250 else "🔴"
+            st.success(f"{status_color} Added reading: {sugar_level} mg/dL at {timestamp.strftime('%Y-%m-%d %H:%M')}")
+            st.rerun()
 
-    # --- Sugar Data Visualization ---
-    st.subheader("Blood Sugar History")
+    # --- Current Status Display ---
+    if sugar_log:
+        latest_entry = sugar_log[-1]
+        latest_sugar = latest_entry['sugar_level']
+        latest_time = latest_entry['timestamp']
+        
+        # Status indicator
+        if 80 <= latest_sugar <= 130:
+            status = "🟢 Normal"
+            status_color = "green"
+        elif 131 <= latest_sugar <= 180:
+            status = "🟡 Elevated"
+            status_color = "orange"
+        elif latest_sugar < 80:
+            status = "🔵 Low"
+            status_color = "blue"
+        else:
+            status = "🔴 High"
+            status_color = "red"
+        
+        st.markdown(f"""
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; margin: 10px 0;">
+            <h3 style="color: {status_color}; margin: 0;">Latest Reading: {latest_sugar} mg/dL</h3>
+            <p style="margin: 5px 0;"><strong>Status:</strong> {status}</p>
+            <p style="margin: 5px 0;"><strong>Time:</strong> {latest_time.strftime('%Y-%m-%d %H:%M')}</p>
+            {f'<p style="margin: 5px 0;"><strong>Notes:</strong> {latest_entry.get("notes", "")}' if latest_entry.get("notes") else ""}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # --- Data Visualization ---
+    st.subheader("📈 Blood Sugar History")
+    
     if sugar_log:
         df = pd.DataFrame(sugar_log)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df = df.sort_values("timestamp")
-        st.line_chart(df.set_index("timestamp")["sugar_level"], use_container_width=True)
-        latest_entry = df.iloc[-1]
-        st.markdown(
-            f"**Latest Blood Sugar:** {int(latest_entry['sugar_level'])} mg/dL at "
-            f"{latest_entry['timestamp'].strftime('%Y-%m-%d %H:%M')}"
-        )
+        
+        # Create enhanced chart
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # Plot the main line
+        ax.plot(df['timestamp'], df['sugar_level'], marker='o', linewidth=2, markersize=6, color='#1f77b4')
+        
+        # Add reference ranges
+        ax.axhspan(80, 130, alpha=0.2, color='green', label='Normal Range (80-130)')
+        ax.axhspan(130, 180, alpha=0.1, color='orange', label='Elevated Range (130-180)')
+        ax.axhline(y=180, color='red', linestyle='--', alpha=0.7, label='High Threshold (180)')
+        ax.axhline(y=70, color='blue', linestyle='--', alpha=0.7, label='Low Threshold (70)')
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Blood Sugar (mg/dL)')
+        ax.set_title('Blood Sugar Levels Over Time')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Rotate x-axis labels for better readability
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        st.pyplot(fig)
+        
+        # Show recent statistics
+        col1, col2, col3, col4 = st.columns(4)
+        recent_readings = df.tail(7)  # Last 7 readings
+        
+        with col1:
+            st.metric("Average (Last 7)", f"{recent_readings['sugar_level'].mean():.1f} mg/dL")
+        with col2:
+            st.metric("Highest (Last 7)", f"{recent_readings['sugar_level'].max():.0f} mg/dL")
+        with col3:
+            st.metric("Lowest (Last 7)", f"{recent_readings['sugar_level'].min():.0f} mg/dL")
+        with col4:
+            readings_in_range = len(recent_readings[(recent_readings['sugar_level'] >= 80) & (recent_readings['sugar_level'] <= 180)])
+            st.metric("In Range (Last 7)", f"{readings_in_range}/7")
+    
     else:
-        st.info("No blood sugar data yet. Log your first value above.")
+        st.info("📝 No blood sugar data yet. Log your first reading above to get started!")
 
-    # --- Advice Section ---
-    if sugar_log:
+    # --- Advanced Analysis & Recommendations ---
+    if len(sugar_log) >= 2:
+        st.subheader("🧠 Personalized Insights")
+        
+        # Detect spikes/drops
         spike_status, delta, recent_foods = detect_spike_downfall(sugar_log, meal_log)
-        # Get extra context
-        try:
-            prediction = get_diabetes_prediction(user_email)
-        except Exception:
-            prediction = "Not available"
-        try:
-            history_advice = get_history_advice(user_email)
-        except Exception:
-            history_advice = "Not available"
-
-        try:
-            with st.spinner("Analyzing your record..."):
+        
+        # Get trend analysis
+        trend_analysis = get_sugar_trend_analysis(sugar_log)
+        
+        # Generate AI recommendations
+        with st.spinner("🔍 Analyzing your data..."):
+            try:
                 advice = get_preventive_measures(
                     sugar_level=sugar_log[-1]['sugar_level'],
                     food_log=meal_log,
                     spike_status=spike_status,
                     delta=delta,
                     recent_foods=recent_foods,
-                    prediction=prediction,
-                    history_advice=history_advice
+                    user_profile=user_profile,
+                    trend_analysis=trend_analysis
                 )
-            st.markdown("### Personalized Advice")
-            st.success(advice)
-        except Exception:
-            st.warning("Advice could not be generated at this time.")
-
-    # --- Food Log Table ---
-    st.subheader("Today's Food Log")
+                
+                st.markdown("### 💡 Personalized Recommendations")
+                st.success(advice)
+                
+                # Food impact analysis
+                food_impact = get_food_sugar_impact(meal_log)
+                st.info(f"🍽️ **Food Impact Analysis:** {food_impact}")
+                
+            except Exception as e:
+                st.warning("⚠️ Unable to generate personalized advice at this time. Please ensure your OpenAI API key is configured correctly.")
+    
+    # --- Today's Food Log Display ---
+    st.subheader("🍽️ Today's Food Log")
+    
     if meal_log:
-        meals_today = [m for m in meal_log if pd.to_datetime(m["timestamp"]).date() == date.today()]
-        if meals_today:
-            df_meals = pd.DataFrame(meals_today)
-            st.dataframe(df_meals[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp"))
+        today_meals = [m for m in meal_log if pd.to_datetime(m["timestamp"]).date() == date.today()]
+        
+        if today_meals:
+            df_meals = pd.DataFrame(today_meals)
+            df_meals['timestamp'] = pd.to_datetime(df_meals['timestamp'])
+            df_meals = df_meals.sort_values("timestamp", ascending=False)
+            
+            # Display in a nice format
+            for _, meal in df_meals.iterrows():
+                col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                with col1:
+                    st.write(f"🍴 **{meal['food']}**")
+                with col2:
+                    st.write(f"⏰ {meal['meal_time']}")
+                with col3:
+                    st.write(f"📏 {meal['quantity']}g")
+                with col4:
+                    st.write(f"🔥 {meal['calories']} kcal")
         else:
-            st.info("No meals logged today.")
+            st.info("No meals logged for today. Visit the Diet Tracker to log your meals!")
     else:
-        st.info("No meals logged yet.")
-
-if __name__ == "__main__":
-    app()
-def save_sugar_log(sugar_log, user_email):
-    filename = get_user_sugar_filename(user_email)
-    os.makedirs("user_data", exist_ok=True)
-    filepath = os.path.join("user_data", filename)
-    serializable_log = []
-    for entry in sugar_log:
-        entry_copy = entry.copy()
-        if isinstance(entry_copy['timestamp'], datetime):
-            entry_copy['timestamp'] = entry_copy['timestamp'].isoformat()
-        serializable_log.append(entry_copy)
-    with open(filepath, "w") as f:
-        json.dump(serializable_log, f)
-
-def load_sugar_log(user_email):
-    filename = get_user_sugar_filename(user_email)
-    filepath = os.path.join("user_data", filename)
-    if os.path.exists(filepath):
-        with open(filepath, "r") as f:
-            data = json.load(f)
-            for entry in data:
-                if isinstance(entry['timestamp'], str):
-                    try:
-                        entry['timestamp'] = datetime.fromisoformat(entry['timestamp'])
-                    except ValueError:
-                        entry['timestamp'] = pd.to_datetime(entry['timestamp'])
-            return data
-    return []
-
-def get_preventive_measures(sugar_level, food_log):
-    prompt = (
-        f"The user's latest blood sugar is {sugar_level} mg/dL.\n"
-        f"Today's meals: {', '.join([f['food'] for f in food_log])}.\n"
-        "Based on this, give 2-3 short, practical preventive advice for diabetes management, "
-        "focusing on sugar intake, meal timing, and healthy habits. "
-        "If sugar is high, suggest when to stop eating sugar-heavy foods. "
-        "If food log is good, praise briefly. Very concise, no medical jargon. No mention of AI or API."
-    )
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        store=True,
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return completion.choices[0].message.content.strip()
-
-def app():
-    st.title("🩸 Sugar Tracker")
-    user_email = get_current_user()
-    sugar_log = load_sugar_log(user_email)
-    meal_log = load_meal_log(user_email)
-
-    # Sugar Log Input
-    st.subheader("Log Your Blood Sugar")
-    with st.form("sugar_log_form"):
-        sugar_level = st.number_input("Blood Sugar (mg/dL)", min_value=40, max_value=600, step=1)
-        # Use date_input and time_input instead of datetime_input
-        date_val = st.date_input("Date", value=date.today())
-        time_val = st.time_input("Time", value=datetime.now().time())
-        submitted = st.form_submit_button("Add Sugar Log")
-        if submitted and sugar_level:
-            # Combine date and time into a datetime object
-            timestamp = datetime.combine(date_val, time_val)
-            sugar_log.append({
-                "timestamp": timestamp,
-                "sugar_level": sugar_level
-            })
-            save_sugar_log(sugar_log, user_email)
-            st.success(f"Added sugar log: {sugar_level} mg/dL at {timestamp.strftime('%Y-%m-%d %H:%M')}")
-            st.experimental_rerun()
-
-    # Sugar Data Visualization
-    st.subheader("Blood Sugar History")
-    if sugar_log:
-        df = pd.DataFrame(sugar_log)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df = df.sort_values("timestamp")
-        st.line_chart(
-            data=df.set_index("timestamp")["sugar_level"],
-            use_container_width=True
-        )
-        latest_entry = df.iloc[-1]
-        st.markdown(f"**Latest Blood Sugar:** {int(latest_entry['sugar_level'])} mg/dL at {latest_entry['timestamp'].strftime('%Y-%m-%d %H:%M')}")
-    else:
-        st.info("No blood sugar data yet. Log your first value above.")
-
-    # Advice Section
-    if sugar_log:
-        latest_sugar = int(sugar_log[-1]['sugar_level'])
-        today_meals = [m for m in meal_log if pd.to_datetime(m["timestamp"]).date() == datetime.now().date()]
-        try:
-            with st.spinner("Analyzing your data..."):
-                advice = get_preventive_measures(latest_sugar, today_meals)
-            st.markdown("### Personalized Advice")
-            st.success(advice)
-        except Exception:
-            st.warning("Could not analyze advice at this time.")
-
-    # Food Log Table
-    st.subheader("Today's Food Log")
-    if meal_log:
-        meals_today = [m for m in meal_log if pd.to_datetime(m["timestamp"]).date() == datetime.now().date()]
-        if meals_today:
-            df_meals = pd.DataFrame(meals_today)
-            st.dataframe(df_meals[["timestamp", "meal_time", "food", "quantity", "calories"]].sort_values("timestamp"))
-        else:
-            st.info("No meals logged today.")
-    else:
-        st.info("No meals logged yet.")
+        st.info("No meals logged yet. Visit the Diet Tracker to start tracking your food intake!")
+    
+    # --- Data Management ---
+    st.subheader("⚙️ Data Management")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if sugar_log:
+            # Export data
+            df_export = pd.DataFrame(sugar_log)
+            csv = df_export.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Sugar Data (CSV)",
+                data=csv,
+                file_name=f"sugar_log_{user_email.replace('@', '_')}_{date.today()}.csv",
+                mime="text/csv"
+            )
+    
+    with col2:
+        if sugar_log:
+            if st.button("🗑️ Clear All Sugar Data", type="secondary"):
+                if st.session_state.get('confirm_clear_sugar'):
+                    st.session_state['confirm_clear_sugar'] = False
+                    # Clear the data
+                    sugar_log.clear()
+                    save_sugar_log(sugar_log, user_email)
+                    st.success("All sugar data cleared!")
+                    st.rerun()
+                else:
+                    st.session_state['confirm_clear_sugar'] = True
+                    st.warning("Click again to confirm deletion of all sugar data.")
 
 if __name__ == "__main__":
     app()
