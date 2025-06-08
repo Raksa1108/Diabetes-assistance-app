@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import json
-from datetime import datetime
+from datetime import datetime, date, time
 from openai import OpenAI
 
 from app.diet_tracker import load_meal_log, get_current_user
@@ -72,9 +72,13 @@ def app():
     st.subheader("Log Your Blood Sugar")
     with st.form("sugar_log_form"):
         sugar_level = st.number_input("Blood Sugar (mg/dL)", min_value=40, max_value=600, step=1)
-        timestamp = st.datetime_input("Time", value=datetime.now())
+        # Use date_input and time_input instead of datetime_input
+        date_val = st.date_input("Date", value=date.today())
+        time_val = st.time_input("Time", value=datetime.now().time())
         submitted = st.form_submit_button("Add Sugar Log")
         if submitted and sugar_level:
+            # Combine date and time into a datetime object
+            timestamp = datetime.combine(date_val, time_val)
             sugar_log.append({
                 "timestamp": timestamp,
                 "sugar_level": sugar_level
