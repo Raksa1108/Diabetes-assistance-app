@@ -11,21 +11,23 @@ from app.diet_tracker import load_meal_log, get_current_user
 from app.history import get_user_by_email  # Import user data function
 
 # --- OpenAI API Setup with Secure Key Management ---
-def get_openai_client():
-    """Securely initialize OpenAI client using Streamlit secrets."""
+def get_gemini_client():
+    """Securely initialize Gemini client using Streamlit secrets."""
     try:
-        # Try to get API key from Streamlit secrets
-        api_key = st.secrets["openai"]["api_key"]
-        return OpenAI(api_key=api_key)
+        api_key = st.secrets["gemini"]["api_key"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        return model
     except KeyError:
-        st.error("❌ OpenAI API key not found in secrets. Please configure your API key in Streamlit secrets.")
+        st.error("❌ Gemini API key not found in secrets. Please configure your API key in Streamlit secrets.")
         st.stop()
     except Exception as e:
-        st.error(f"❌ Error initializing OpenAI client: {str(e)}")
+        st.error(f"❌ Error initializing Gemini client: {str(e)}")
         st.stop()
 
-# Initialize OpenAI client
-client = get_openai_client()
+# Initialize Gemini client
+gemini_model = get_gemini_client()
+
 
 # --- File Helper Functions ---
 def get_user_sugar_filename(user_email):
@@ -162,7 +164,7 @@ def get_sugar_trend_analysis(sugar_log, days=7):
 
 # --- AI-Powered Sugar Content Analysis ---
 def get_sugar_content_from_api(food_name, quantity=100):
-    """Get sugar content for a food item using OpenAI API."""
+    """Get sugar content for a food item using Gemini API."""
     try:
         prompt = f"""
         Analyze the sugar content for: {food_name} (quantity: {quantity}g)
@@ -178,18 +180,13 @@ def get_sugar_content_from_api(food_name, quantity=100):
         Base your response on standard nutritional data. Be accurate and concise.
         """
         
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=150,
-            temperature=0.1
-        )
+        response = gemini_model.generate_content(prompt)
         
-        response_text = completion.choices[0].message.content.strip()
+        response_text = response.text.strip()
+        
         # Try to parse JSON from the response
         try:
             import json
-            # Extract JSON from response if it contains extra text
             start_idx = response_text.find('{')
             end_idx = response_text.rfind('}') + 1
             if start_idx != -1 and end_idx != 0:
@@ -214,6 +211,7 @@ def get_sugar_content_from_api(food_name, quantity=100):
             "food_category": "unknown",
             "glycemic_impact": "low"
         }
+
 
 def analyze_daily_sugar_intake(meal_log):
     """Analyze total sugar intake for today."""
@@ -266,18 +264,16 @@ def analyze_daily_sugar_intake(meal_log):
 
 # --- AI-Powered Advice Generation ---
 def get_preventive_measures(sugar_level, food_log, spike_status, delta, recent_foods, user_profile=None, trend_analysis=None):
-    """Generate personalized preventive measures using AI."""
+    """Generate personalized preventive measures using Gemini."""
     
     # Prepare context information
     meal_str = ', '.join([f"{f['food']} ({f['calories']} kcal)" for f in food_log[-5:]]) if food_log else "none logged today"
     recent_str = ', '.join([f"{f['food']} ({f.get('calories', 'unknown')} kcal)" for f in recent_foods]) if recent_foods else "none in past 2 hours"
     
-    # Add user profile context if available
     profile_str = ""
     if user_profile:
         profile_str = f"User profile: Age {user_profile.get('age', 'unknown')}, Weight {user_profile.get('weight', 'unknown')} kg, Height {user_profile.get('height', 'unknown')} cm. "
     
-    # Add trend analysis if available
     trend_str = ""
     if trend_analysis:
         trend_str = f"Recent 7-day analysis: Average sugar {trend_analysis['avg_sugar']:.1f} mg/dL, {trend_analysis['high_readings']} high readings, {trend_analysis['low_readings']} low readings, trend is {trend_analysis['trend']}. "
@@ -301,16 +297,12 @@ def get_preventive_measures(sugar_level, food_log, spike_status, delta, recent_f
     """
     
     try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,
-            temperature=0.7
-        )
-        return completion.choices[0].message.content.strip()
+        response = gemini_model.generate_content(prompt)
+        return response.text.strip()
     except Exception as e:
         st.error(f"Error generating AI advice: {str(e)}")
         return f"Unable to generate personalized advice at this time. General tip: Monitor your blood sugar regularly and maintain a balanced diet. Current reading: {sugar_level} mg/dL."
+
 
 def get_food_sugar_impact(food_log):
     """Analyze which foods might be causing sugar spikes."""
