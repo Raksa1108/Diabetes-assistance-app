@@ -22,8 +22,8 @@ def app():
     2. **Explore the SHAP WATERFALL tab**  
        Understand *why* the model made its prediction using **SHAP** explanations and feature importance plots.
 
-    3. **Check the PERFORMANCE tab**  
-       See how well the model performs with **accuracy**, **confusion matrix**, and **classification report**.
+    3. **Diet Tracker**
+       Log your food meals and also get macronutrient distribution pot.
 
     4. **Review the HISTORY tab**  
        View and manage all your past predictions in a **tabular format**. You can also **clear** your history.
