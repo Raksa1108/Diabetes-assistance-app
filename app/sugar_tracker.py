@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import json
 from datetime import datetime, date, time
-from openai import OpenAI
+import google.generativeai as genai
 
 # Import functions from other modules
 from app.diet_tracker import load_meal_log, get_current_user
