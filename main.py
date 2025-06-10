@@ -3,7 +3,6 @@ import random
 from app import about
 from app import user_input
 from app import shap_waterfall
-from app import performance
 from app import history
 from app import about_diabetes
 from app import ai_chat
@@ -205,7 +204,6 @@ def show_app_nav():
         "SHAP WATERFALL",
         "DIET TRACKER",
         "SUGAR TRACKER",
-        "PERFORMANCE",
         "ASK AI",
         "SETTINGS",
         "ABOUT DIABETES",
@@ -229,8 +227,6 @@ def show_app_nav():
         diet_tracker.app()
     elif app_mode == "SUGAR TRACKER":  
         sugar_tracker.app()
-    elif app_mode == "PERFORMANCE":
-        performance.app()
     elif app_mode == "SETTINGS":
         history.app()
     elif app_mode == "ABOUT DIABETES":
