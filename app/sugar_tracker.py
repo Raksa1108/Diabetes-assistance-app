@@ -419,21 +419,6 @@ def app():
                 st.warning("⚠️ **High Sugar Foods Today:**")
                 for food in daily_analysis['high_sugar_foods']:
                     st.write(f"• {food}")
-            
-            # Sugar breakdown chart
-            if daily_analysis['sugar_breakdown']:
-                st.subheader("🍽️ Sugar Breakdown by Food")
-                breakdown_df = pd.DataFrame(daily_analysis['sugar_breakdown'])
-                if not breakdown_df.empty:
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    colors = ['red' if impact == 'high' else 'orange' if impact == 'medium' else 'green' 
-                             for impact in breakdown_df['impact']]
-                    ax.bar(breakdown_df['food'], breakdown_df['sugar'], color=colors)
-                    ax.set_ylabel('Sugar Content (g)')
-                    ax.set_title('Sugar Content by Food Item')
-                    plt.xticks(rotation=45, ha='right')
-                    plt.tight_layout()
-                    st.pyplot(fig)
     
     else:
         st.info("📝 No food data available. Log meals in the Diet Tracker to see sugar analysis!")
