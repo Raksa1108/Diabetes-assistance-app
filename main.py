@@ -10,6 +10,7 @@ from app import diet_tracker
 from app import calculation
 from app import sugar_tracker
 from app import calorie
+from app import performance
 from supabase_client import supabase
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -209,6 +210,7 @@ def show_app_nav():
         "ASK AI",
         "SETTINGS",
         "ABOUT DIABETES",
+        "PERFORMANCE",
     ])
 
     if st.sidebar.button("Logout"):
@@ -237,6 +239,8 @@ def show_app_nav():
         about_diabetes.app()
     elif app_mode == "ASK AI":
         ai_chat.app()
+    elif app_mode == "PERFORMANCE":
+        performance.app()
 
 def main():
     if not st.session_state['logged_in']:
